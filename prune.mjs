@@ -21,7 +21,6 @@ try {
   }
 } catch {}
 
-const CONCURRENCY = parseInt(process.env.CONCURRENCY || '5', 10);
 const CACHE_DIR = resolve(__dirname, '.cache');
 
 const program = new Command();
@@ -32,15 +31,17 @@ program
   .version('1.0.0')
   .argument('<input>', 'Book title or YouTube URL')
   .option('-o, --output <path>', 'Output directory or file path')
+  .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
+  .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
   .action(async (input, opts) => {
     const isYoutube = input.includes('youtube.com') || input.includes('youtu.be');
     const type = isYoutube ? 'youtube' : 'book';
-    await handlePrune(type, input, opts.output);
+    await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10));
   });
 
 program.parse();
 
-async function handlePrune(type, input, output) {
+async function handlePrune(type, input, output, batchSize, concurrency) {
   try {
     console.log(chalk.blue(`\n🚀 Processing ${type}: ${chalk.bold(input)}...`));
 
@@ -56,7 +57,7 @@ async function handlePrune(type, input, output) {
     }
 
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
-    const pruned = await pruneContent(type, input, title, sourceContent);
+    const pruned = await pruneContent(type, input, title, sourceContent, batchSize, concurrency);
 
     let outputPath;
     if (output) {
@@ -151,7 +152,7 @@ function cleanCache(input) {
   } catch {}
 }
 
-async function pruneContent(type, input, title, sourceContent) {
+async function pruneContent(type, input, title, sourceContent, batchSize, concurrency) {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error('API_KEY is missing in .env file');
@@ -175,12 +176,12 @@ async function pruneContent(type, input, title, sourceContent) {
   }
 
   if (type === 'youtube') {
-    return await pruneYoutube(chat, input, title, sourceContent);
+    return await pruneYoutube(chat, input, title, sourceContent, batchSize, concurrency);
   }
-  return await pruneBook(chat, input);
+  return await pruneBook(chat, input, concurrency);
 }
 
-async function pruneYoutube(chat, input, title, sourceContent) {
+async function pruneYoutube(chat, input, title, sourceContent, batchSize, concurrency) {
   let summary = '';
   let outline = [];
 
@@ -218,13 +219,13 @@ ${sourceContent}`;
     cacheOutline(input, { summary, outline });
   }
 
-  const SECTIONS_PER_BATCH = parseInt(process.env.SECTIONS_PER_BATCH || '5', 10);
+  const SECTIONS_PER_BATCH = batchSize;
   const batches = [];
   for (let i = 0; i < outline.length; i += SECTIONS_PER_BATCH) {
     batches.push(outline.slice(i, i + SECTIONS_PER_BATCH));
   }
 
-  console.log(chalk.yellow(`📖 Found ${outline.length} sections in ${batches.length} batches. Generating dense content (concurrency: ${CONCURRENCY})...`));
+  console.log(chalk.yellow(`📖 Found ${outline.length} sections in ${batches.length} batches. Generating dense content (concurrency: ${concurrency})...`));
 
   const results = new Array(batches.length);
   let completed = 0;
@@ -279,8 +280,8 @@ ${sourceContent}
     console.log(chalk.gray(`   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.green('✓')}`));
   }
 
-  for (let i = 0; i < batches.length; i += CONCURRENCY) {
-    const batch = batches.slice(i, i + CONCURRENCY).map((_, j) => processBatch(i + j));
+  for (let i = 0; i < batches.length; i += concurrency) {
+    const batch = batches.slice(i, i + concurrency).map((_, j) => processBatch(i + j));
     await Promise.all(batch);
   }
 
@@ -293,7 +294,7 @@ ${sourceContent}
   return fullResult;
 }
 
-async function pruneBook(chat, input) {
+async function pruneBook(chat, input, concurrency) {
   let summary = '';
   let outline = [];
 
@@ -328,7 +329,7 @@ async function pruneBook(chat, input) {
     cacheOutline(input, { summary, outline });
   }
 
-  console.log(chalk.yellow(`📖 Found ${outline.length} sections. Generating dense content (concurrency: ${CONCURRENCY})...`));
+  console.log(chalk.yellow(`📖 Found ${outline.length} sections. Generating dense content (concurrency: ${concurrency})...`));
 
   const results = new Array(outline.length);
   let completed = 0;
@@ -376,8 +377,8 @@ async function pruneBook(chat, input) {
     console.log(chalk.gray(`   [${completed}/${outline.length}] ${section} ${chalk.green('✓')}`));
   }
 
-  for (let i = 0; i < outline.length; i += CONCURRENCY) {
-    const batch = outline.slice(i, i + CONCURRENCY).map((_, j) => processSection(i + j));
+  for (let i = 0; i < outline.length; i += concurrency) {
+    const batch = outline.slice(i, i + concurrency).map((_, j) => processSection(i + j));
     await Promise.all(batch);
   }
 
