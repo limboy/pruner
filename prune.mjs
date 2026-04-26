@@ -274,6 +274,10 @@ ${sourceContent}
     let batchText = await chat(batchPrompt);
     const firstHeading = batchText.indexOf('## ');
     if (firstHeading > 0) batchText = batchText.slice(firstHeading);
+    
+    // Trim and remove leading/trailing separators to avoid double HRs when joining
+    batchText = batchText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
+    
     results[batchIndex] = batchText;
     cacheSection(input, batchIndex, batchText);
     completed++;
@@ -371,6 +375,10 @@ async function pruneBook(chat, input, concurrency) {
     let sectionText = await chat(sectionPrompt);
     const headingPos = sectionText.indexOf('## ');
     if (headingPos > 0) sectionText = sectionText.slice(headingPos);
+
+    // Trim and remove leading/trailing separators to avoid double HRs when joining
+    sectionText = sectionText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
+
     results[i] = sectionText;
     cacheSection(input, i, sectionText);
     completed++;
