@@ -31,15 +31,16 @@ program
   .description('Prune content from books or YouTube videos into a dense version.')
   .version('1.0.0')
   .argument('<input>', 'Book title or YouTube URL')
-  .action(async (input) => {
+  .option('-o, --output <path>', 'Output directory or file path')
+  .action(async (input, opts) => {
     const isYoutube = input.includes('youtube.com') || input.includes('youtu.be');
     const type = isYoutube ? 'youtube' : 'book';
-    await handlePrune(type, input);
+    await handlePrune(type, input, opts.output);
   });
 
 program.parse();
 
-async function handlePrune(type, input) {
+async function handlePrune(type, input, output) {
   try {
     console.log(chalk.blue(`\n🚀 Processing ${type}: ${chalk.bold(input)}...`));
 
@@ -57,7 +58,17 @@ async function handlePrune(type, input) {
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
     const pruned = await pruneContent(type, input, title, sourceContent);
 
-    const outputPath = `${title}.md`;
+    let outputPath;
+    if (output) {
+      if (output.endsWith('.md')) {
+        outputPath = output;
+      } else {
+        fs.mkdirSync(output, { recursive: true });
+        outputPath = resolve(output, `${title}.md`);
+      }
+    } else {
+      outputPath = `${title}.md`;
+    }
     fs.writeFileSync(outputPath, pruned);
     cleanCache(input);
 
