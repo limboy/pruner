@@ -81,13 +81,14 @@ async function handlePrune(type, input, output) {
 
 async function fetchYoutubeTitle(url) {
   try {
-    const res = await fetch(url);
-    const html = await res.text();
-    const match = html.match(/<title>([^<]*)<\/title>/);
-    if (match) return match[1].replace(/ - YouTube$/, '').trim();
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembedUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.title) return data.title.trim();
+    }
   } catch {}
-  const id = url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || 'video';
-  return id;
+  return url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || 'video';
 }
 
 async function fetchYoutubeTranscript(url) {
