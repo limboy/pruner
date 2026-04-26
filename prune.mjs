@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { YoutubeTranscript } from 'youtube-transcript';
+import { execFileSync } from 'child_process';
 import chalk from 'chalk';
 import fs from 'fs';
 import { dirname, resolve } from 'path';
@@ -91,12 +91,27 @@ async function fetchYoutubeTitle(url) {
   return url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || 'video';
 }
 
-async function fetchYoutubeTranscript(url) {
+function fetchYoutubeTranscript(url) {
+  const tmpFile = resolve(__dirname, `.cache/_sub_${Date.now()}`);
+  fs.mkdirSync(resolve(__dirname, '.cache'), { recursive: true });
   try {
-    const transcripts = await YoutubeTranscript.fetchTranscript(url);
-    return transcripts.map(t => t.text).join(' ');
+    execFileSync('yt-dlp', [
+      '--cookies-from-browser', 'chrome',
+      '--js-runtimes', 'node',
+      '--write-auto-sub', '--sub-lang', 'en', '--sub-format', 'json3',
+      '--skip-download', '-o', tmpFile, url,
+    ], { stdio: 'pipe' });
+    const data = JSON.parse(fs.readFileSync(`${tmpFile}.en.json3`, 'utf-8'));
+    return data.events
+      .filter(e => e.segs)
+      .map(e => e.segs.map(s => s.utf8).join(''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   } catch (error) {
     throw new Error(`Failed to fetch YouTube transcript: ${error.message}`);
+  } finally {
+    try { fs.unlinkSync(`${tmpFile}.en.json3`); } catch {}
   }
 }
 
@@ -148,14 +163,97 @@ async function pruneContent(type, input, title, sourceContent) {
     return data.choices[0].message.content;
   }
 
+  if (type === 'youtube') {
+    return await pruneYoutube(chat, input, title, sourceContent);
+  }
+  return await pruneBook(chat, input);
+}
+
+async function pruneYoutube(chat, input, title, sourceContent) {
   console.log(chalk.yellow('📝 Generating content outline...'));
 
-  let outlinePrompt = '';
-  if (type === 'book') {
-    outlinePrompt = `请为书籍《${input}》生成一个详细的章节或主题大纲。请直接以列表形式列出大纲条目，每行一个。不要包含任何前导语或总结性文字。`;
-  } else {
-    outlinePrompt = `请根据以下 YouTube 视频字幕内容生成一个详细的内容大纲。请将内容划分为逻辑清晰的模块。直接以列表形式列出条目，每行一个。不要包含任何前导语或总结性文字。\n\n字幕内容：\n${sourceContent}`;
+  const outlinePrompt = `请根据以下 YouTube 视频字幕内容生成一个详细的内容大纲。请将内容划分为逻辑清晰的模块。直接以列表形式列出条目，每行一个。不要包含任何前导语或总结性文字。\n\n字幕内容：\n${sourceContent}`;
+
+  const outlineRaw = await chat(outlinePrompt);
+  const outline = outlineRaw.split('\n')
+    .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
+    .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+
+  const SECTIONS_PER_BATCH = parseInt(process.env.SECTIONS_PER_BATCH || '5', 10);
+  const batches = [];
+  for (let i = 0; i < outline.length; i += SECTIONS_PER_BATCH) {
+    batches.push(outline.slice(i, i + SECTIONS_PER_BATCH));
   }
+
+  console.log(chalk.yellow(`📖 Found ${outline.length} sections in ${batches.length} batches. Generating dense content (concurrency: ${CONCURRENCY})...`));
+
+  const results = new Array(batches.length);
+  let completed = 0;
+
+  async function processBatch(batchIndex) {
+    const sections = batches[batchIndex];
+    const cached = getCachedSection(input, batchIndex);
+    if (cached) {
+      results[batchIndex] = cached;
+      completed++;
+      console.log(chalk.gray(`   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.cyan('(cached)')}`));
+      return;
+    }
+
+    const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    const batchPrompt = `任务：根据以下视频字幕，为以下各部分分别提供"精简版（Pruned Version）"内容。输出语言：中文。
+
+需要处理的部分：
+${sectionList}
+
+请对每个部分按以下格式输出：
+
+## [部分标题]
+
+### ��容精简
+[该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、订阅提醒等。保留所有的核心洞察、关键事实、情节转折或逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
+
+### 要点提炼
+- [关键洞察、事实或核心情节 1]
+- [关键洞察、事实或核心情节 2]
+- ...
+
+---
+
+字幕内容：
+${sourceContent}
+
+要求：
+1. 确保输出的信息密度足够大。
+2. 即使不看视频，也能完全掌握每个部分讲述的关键点和细节。
+3. 请按顺序逐个输出每个部分，每个部分之间用 --- ���隔。`;
+
+    let batchText = await chat(batchPrompt);
+    const firstHeading = batchText.indexOf('## ');
+    if (firstHeading > 0) batchText = batchText.slice(firstHeading);
+    results[batchIndex] = batchText;
+    cacheSection(input, batchIndex, batchText);
+    completed++;
+    console.log(chalk.gray(`   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.green('✓')}`));
+  }
+
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const batch = batches.slice(i, i + CONCURRENCY).map((_, j) => processBatch(i + j));
+    await Promise.all(batch);
+  }
+
+  let fullResult = `# ${title} 精简版\n\n视频链接: ${input}\n\n`;
+  let combined = results.join('\n\n---\n\n');
+  let sectionNum = 0;
+  combined = combined.replace(/^## \d+[\.\、．]\s*/gm, () => `## ${++sectionNum}. `);
+  fullResult += combined;
+  return fullResult;
+}
+
+async function pruneBook(chat, input) {
+  console.log(chalk.yellow('📝 Generating content outline...'));
+
+  const outlinePrompt = `请为书籍《${input}》生成一个详细的章节或主题大纲。请直接以列表形式列出大纲条目，每行一个。不要包含任何前导语或总结性文字。`;
 
   const outlineRaw = await chat(outlinePrompt);
   const outline = outlineRaw.split('\n')
@@ -177,68 +275,41 @@ async function pruneContent(type, input, title, sourceContent) {
       return;
     }
 
-    let sectionPrompt = '';
-    if (type === 'book') {
-      sectionPrompt = `
-        任务：请为书籍《${input}》中的章节/主题"${section}"提供"精简版（Pruned Version）"内容。输出语言：中文。
+    const sectionPrompt = `
+      任务：请为书籍《${input}》中的章节/主题"${section}"提供"精简版（Pruned Version）"内容。输出语言：中文。
 
-        格式要求：
-        ## ${section}
+      格式要求：
+      ## ${section}
 
-        ### 内容精简
-        [在此处提供该部分核心内容的高密度压缩版本。无论是情节转折、人物发展还是核心理论、逻辑链条，都请提供深度的浓缩。删除所有冗余修饰，但保留支撑内容质感的核心细节和关键案例/场景，使其在不看原著的情况下依然能获得实质性的阅读体验。]
+      ### 内容精简
+      [在此处提供该部分核心内容的高密度压缩版本。无论是情节转折、人物发展还是核心理论、逻辑链条，都请提供深度的浓缩。删除所有冗余修饰，但保留支撑内容质感的核心细节和关键案例/场景，使其在不看原著的情况下依然能获得实质性的阅读体验。]
 
-        ### 要点提炼
-        - [核心点、关键情节、核心洞察或逻辑逻辑点 1]
-        - [核心点、关键情节、核心洞察或逻辑逻辑点 2]
-        - ...
+      ### 要点提炼
+      - [核心点、关键情节、核心洞察或逻辑逻辑点 1]
+      - [核心点、关键情节、核心洞察或逻辑逻辑点 2]
+      - ...
 
-        要求：
-        1. 这不是简单的摘要，而是对原著内容的高密度重构。
-        2. 每一句话都应该具有极高的信息量。
-        3. 即使读者不看原著，也能通过这份内容获得接近原著的知识量或情节体验。
-      `;
-    } else {
-      sectionPrompt = `
-        任务：根据以下视频字幕，为其中的部分"${section}"提供"精简版（Pruned Version）"内容。输出语言：中文。
+      要求：
+      1. 这不是简单的摘要，而是对原著内容的高密度重构。
+      2. 每一句话都应该具有极高的信息量。
+      3. 即使读者不看原著，也能通过这份内容获得接近原著的知识量或情节体验。
+    `;
 
-        格式要求：
-        ## ${section}
-
-        ### 内容精简
-        [在此处提供该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、订阅提醒等。保留所有的核心洞察、关键事实、情节转折或逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
-
-        ### 要点提炼
-        - [关键洞察、事实或核心情节 1]
-        - [关键洞察、事实或核心情节 2]
-        - ...
-
-        字幕内容供参考：
-        ---
-        ${sourceContent}
-        ---
-
-        要求：
-        1. 确保输出的信息密度足够大。
-        2. 即使不看视频，也能完全掌握该部分讲述的关键点和细节。
-      `;
-    }
-
-    const sectionText = await chat(sectionPrompt);
+    let sectionText = await chat(sectionPrompt);
+    const headingPos = sectionText.indexOf('## ');
+    if (headingPos > 0) sectionText = sectionText.slice(headingPos);
     results[i] = sectionText;
     cacheSection(input, i, sectionText);
     completed++;
     console.log(chalk.gray(`   [${completed}/${outline.length}] ${section} ${chalk.green('✓')}`));
   }
 
-  // Process sections concurrently with limited parallelism
   for (let i = 0; i < outline.length; i += CONCURRENCY) {
     const batch = outline.slice(i, i + CONCURRENCY).map((_, j) => processSection(i + j));
     await Promise.all(batch);
   }
 
-  let fullResult = `# ${type === 'book' ? `《${input}》` : title} 精简版\n\n`;
-  if (type === 'youtube') fullResult += `视频链接: ${input}\n\n`;
+  let fullResult = `# 《${input}》 精简版\n\n`;
   fullResult += results.join('\n\n---\n\n');
 
   return fullResult;
