@@ -193,7 +193,7 @@ async function pruneYoutube(chat, input, title, sourceContent, batchSize, concur
   } else {
     const outlinePrompt = `请根据以下 YouTube 视频字幕内容，完成两件事。输出语言：中文。
 
-1. 先用一段话(几百字)概括整个视频的核心内容和主旨。
+1. 先用一段话概括整个视频的核心内容和主旨。
 2. 然后生成一个详细的内容大纲，将内容划分为逻辑清晰的模块，每行一个条目。
 
 请严格按以下格式输出，不要包含其他文字：
@@ -310,7 +310,7 @@ async function pruneBook(chat, input, concurrency) {
   } else {
     const outlinePrompt = `请为书籍《${input}》完成两件事。输出语言：中文。
 
-1. 先用一段话(几百字)概括这本书的核心内容和主旨。
+1. 先用一段话概括这本书的核心内容和主旨。
 2. 然后生成一个详细的章节或主题大纲，每行一个条目。
 
 请严格按以下格式输出，不要包含其他文字：
