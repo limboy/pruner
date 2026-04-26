@@ -172,10 +172,28 @@ async function pruneContent(type, input, title, sourceContent) {
 async function pruneYoutube(chat, input, title, sourceContent) {
   console.log(chalk.yellow('📝 Generating content outline...'));
 
-  const outlinePrompt = `请根据以下 YouTube 视频字幕内容生成一个详细的内容大纲。请将内容划分为逻辑清晰的模块。直接以列表形式列出条目，每行一个。不要包含任何前导语或总结性文字。\n\n字幕内容：\n${sourceContent}`;
+  const outlinePrompt = `请根据以下 YouTube 视频字幕内容，完成两件事。输出语言：中文。
+
+1. 先用一段话概括整个视频的核心内容和主旨。
+2. 然后生成一个详细的内容大纲，将内容划分为逻辑清晰的模块，每行一个条目。
+
+请严格按以下格式输出，不要包含其他文字：
+
+===SUMMARY===
+[概括内容]
+
+===OUTLINE===
+[大纲条目，每行一个]
+
+字幕内容：
+${sourceContent}`;
 
   const outlineRaw = await chat(outlinePrompt);
-  const outline = outlineRaw.split('\n')
+  const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+  const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
+  const summary = summaryMatch ? summaryMatch[1].trim() : '';
+  const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
+  const outline = outlineText.split('\n')
     .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
     .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
 
@@ -210,7 +228,7 @@ ${sectionList}
 
 ## [部分标题]
 
-### ��容精简
+### 内容精简
 [该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、订阅提醒等。保留所有的核心洞察、关键事实、情节转折或逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
 
 ### 要点提炼
@@ -226,7 +244,7 @@ ${sourceContent}
 要求：
 1. 确保输出的信息密度足够大。
 2. 即使不看视频，也能完全掌握每个部分讲述的关键点和细节。
-3. 请按顺序逐个输出每个部分，每个部分之间用 --- ���隔。`;
+3. 请按顺序逐个输出每个部分，每个部分之间用 --- 分隔。`;
 
     let batchText = await chat(batchPrompt);
     const firstHeading = batchText.indexOf('## ');
@@ -243,6 +261,7 @@ ${sourceContent}
   }
 
   let fullResult = `# ${title} 精简版\n\n视频链接: ${input}\n\n`;
+  if (summary) fullResult += `> ${summary}\n\n`;
   let combined = results.join('\n\n---\n\n');
   let sectionNum = 0;
   combined = combined.replace(/^## \d+[\.\、．]\s*/gm, () => `## ${++sectionNum}. `);
@@ -253,10 +272,25 @@ ${sourceContent}
 async function pruneBook(chat, input) {
   console.log(chalk.yellow('📝 Generating content outline...'));
 
-  const outlinePrompt = `请为书籍《${input}》生成一个详细的章节或主题大纲。请直接以列表形式列出大纲条目，每行一个。不要包含任何前导语或总结性文字。`;
+  const outlinePrompt = `请为书籍《${input}》完成两件事。输出语言：中文。
+
+1. 先用一段话概括这本书的核心内容和主旨。
+2. 然后生成一个详细的章节或主题大纲，每行一个条目。
+
+请严格按以下格式输出，不要包含其他文字：
+
+===SUMMARY===
+[概括内容]
+
+===OUTLINE===
+[大纲条目，每行一个]`;
 
   const outlineRaw = await chat(outlinePrompt);
-  const outline = outlineRaw.split('\n')
+  const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+  const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
+  const summary = summaryMatch ? summaryMatch[1].trim() : '';
+  const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
+  const outline = outlineText.split('\n')
     .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
     .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
 
@@ -310,6 +344,7 @@ async function pruneBook(chat, input) {
   }
 
   let fullResult = `# 《${input}》 精简版\n\n`;
+  if (summary) fullResult += `> ${summary}\n\n`;
   fullResult += results.join('\n\n---\n\n');
 
   return fullResult;
