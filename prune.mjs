@@ -130,6 +130,17 @@ function cacheSection(input, index, content) {
   fs.writeFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_${index}.md`), content);
 }
 
+function getCachedOutline(input) {
+  try {
+    return JSON.parse(fs.readFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`), 'utf-8'));
+  } catch { return null; }
+}
+
+function cacheOutline(input, data) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  fs.writeFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`), JSON.stringify(data));
+}
+
 function cleanCache(input) {
   try {
     const prefix = cacheKey(input);
@@ -170,9 +181,16 @@ async function pruneContent(type, input, title, sourceContent) {
 }
 
 async function pruneYoutube(chat, input, title, sourceContent) {
-  console.log(chalk.yellow('📝 Generating content outline...'));
+  let summary = '';
+  let outline = [];
 
-  const outlinePrompt = `请根据以下 YouTube 视频字幕内容，完成两件事。输出语言：中文。
+  const cachedOutline = getCachedOutline(input);
+  if (cachedOutline) {
+    summary = cachedOutline.summary;
+    outline = cachedOutline.outline;
+    console.log(chalk.gray('   (loaded from cache)'));
+  } else {
+    const outlinePrompt = `请根据以下 YouTube 视频字幕内容，完成两件事。输出语言：中文。
 
 1. 先用一段话概括整个视频的核心内容和主旨。
 2. 然后生成一个详细的内容大纲，将内容划分为逻辑清晰的模块，每行一个条目。
@@ -188,14 +206,17 @@ async function pruneYoutube(chat, input, title, sourceContent) {
 字幕内容：
 ${sourceContent}`;
 
-  const outlineRaw = await chat(outlinePrompt);
-  const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
-  const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
-  const summary = summaryMatch ? summaryMatch[1].trim() : '';
-  const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
-  const outline = outlineText.split('\n')
-    .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
-    .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+    const outlineRaw = await chat(outlinePrompt);
+    const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+    const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
+    summary = summaryMatch ? summaryMatch[1].trim() : '';
+    const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
+    outline = outlineText.split('\n')
+      .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
+      .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+
+    cacheOutline(input, { summary, outline });
+  }
 
   const SECTIONS_PER_BATCH = parseInt(process.env.SECTIONS_PER_BATCH || '5', 10);
   const batches = [];
@@ -273,9 +294,16 @@ ${sourceContent}
 }
 
 async function pruneBook(chat, input) {
-  console.log(chalk.yellow('📝 Generating content outline...'));
+  let summary = '';
+  let outline = [];
 
-  const outlinePrompt = `请为书籍《${input}》完成两件事。输出语言：中文。
+  const cachedOutline = getCachedOutline(input);
+  if (cachedOutline) {
+    summary = cachedOutline.summary;
+    outline = cachedOutline.outline;
+    console.log(chalk.gray('   (loaded from cache)'));
+  } else {
+    const outlinePrompt = `请为书籍《${input}》完成两件事。输出语言：中文。
 
 1. 先用一段话概括这本书的核心内容和主旨。
 2. 然后生成一个详细的章节或主题大纲，每行一个条目。
@@ -288,14 +316,17 @@ async function pruneBook(chat, input) {
 ===OUTLINE===
 [大纲条目，每行一个]`;
 
-  const outlineRaw = await chat(outlinePrompt);
-  const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
-  const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
-  const summary = summaryMatch ? summaryMatch[1].trim() : '';
-  const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
-  const outline = outlineText.split('\n')
-    .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
-    .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+    const outlineRaw = await chat(outlinePrompt);
+    const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+    const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
+    summary = summaryMatch ? summaryMatch[1].trim() : '';
+    const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
+    outline = outlineText.split('\n')
+      .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
+      .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+
+    cacheOutline(input, { summary, outline });
+  }
 
   console.log(chalk.yellow(`📖 Found ${outline.length} sections. Generating dense content (concurrency: ${CONCURRENCY})...`));
 
