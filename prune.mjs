@@ -47,6 +47,7 @@ function getLabels(lang) {
     prunedSuffix: '精简版',
     videoLink: '视频链接',
     articleLink: '原文链接',
+    fileLink: '文件路径',
     contentPrune: '内容精简',
     keyPoints: '要点提炼',
     excerpts: '原文摘录',
@@ -54,6 +55,7 @@ function getLabels(lang) {
     prunedSuffix: 'Pruned Version',
     videoLink: 'Video',
     articleLink: 'Source',
+    fileLink: 'File',
     contentPrune: 'Dense Reconstruction',
     keyPoints: 'Key Takeaways',
     excerpts: 'Original Excerpts',
@@ -66,7 +68,7 @@ program
   .name('pruner')
   .description('Prune content from books or YouTube videos into a dense version.')
   .version('1.0.0')
-  .argument('<input>', 'Book title or YouTube URL')
+  .argument('<input>', 'Book title, YouTube URL, or local .md file')
   .option('-o, --output <path>', 'Output directory or file path')
   .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
   .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
@@ -78,6 +80,12 @@ program
         type = 'youtube';
       } else {
         type = 'url';
+      }
+    } else if (input.endsWith('.md')) {
+      const fullPath = resolve(process.cwd(), input);
+      if (fs.existsSync(fullPath)) {
+        type = 'markdown';
+        input = fullPath;
       }
     }
     await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10), opts.lang);
@@ -106,6 +114,12 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
         throw new Error('Could not retrieve content from URL.');
       }
       title = parsed.title;
+    } else if (type === 'markdown') {
+      sourceContent = fs.readFileSync(input, 'utf-8');
+      if (!sourceContent) {
+        throw new Error('Could not read content from markdown file.');
+      }
+      title = input.replace(/^.*[\\\/]/, '').replace(/\.md$/i, '');
     }
 
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
@@ -284,7 +298,7 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
     return data.choices[0].message.content;
   }
 
-  if (type === 'youtube' || type === 'url') {
+  if (type === 'youtube' || type === 'url' || type === 'markdown') {
     return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang);
   }
   return await pruneBook(chat, input, concurrency, lang);
@@ -301,7 +315,7 @@ async function pruneGenericContent(chat, type, input, title, sourceContent, batc
     outline = cachedOutline.outline;
     console.log(chalk.gray('   (loaded from cache)'));
   } else {
-    const contentType = type === 'youtube' ? 'YouTube video transcript' : 'web article';
+    const contentType = type === 'youtube' ? 'YouTube video transcript' : (type === 'markdown' ? 'markdown document' : 'web article');
     const outlinePrompt = `Based on the following ${contentType} content, do two things. Output language: ${lang}.
 
 1. First, write a paragraph summarizing the core content and theme.
@@ -353,7 +367,7 @@ ${sourceContent}`;
 
     const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
     const labels = getLabels(lang);
-    const contentType = type === 'youtube' ? 'video transcript' : 'article content';
+    const contentType = type === 'youtube' ? 'video transcript' : (type === 'markdown' ? 'markdown document' : 'article content');
     const batchPrompt = `Task: Based on the following ${contentType}, provide a "Pruned Version" for each of the following sections. Output language: ${lang}.
 
 Sections to process:
@@ -403,7 +417,7 @@ Requirements:
   }
 
   const labels = getLabels(lang);
-  const sourceLink = type === 'youtube' ? `${labels.videoLink}: ${input}` : `${labels.articleLink}: ${input}`;
+  const sourceLink = type === 'youtube' ? `${labels.videoLink}: ${input}` : (type === 'markdown' ? `${labels.fileLink}: ${input}` : `${labels.articleLink}: ${input}`);
   let fullResult = `# ${title} ${labels.prunedSuffix}\n\n${sourceLink}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
   let combined = results.join('\n\n---\n\n');

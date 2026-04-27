@@ -1,6 +1,6 @@
 # Pruner ✂️
 
-A tool to turn books, YouTube videos, and **web articles** into **dense, pruned** versions. Not a summary, but a concentrated extraction of knowledge using a multi-step process for maximum detail.
+A tool to turn books, YouTube videos, **web articles**, and **local markdown files** into **dense, pruned** versions. Not a summary, but a concentrated extraction of knowledge using a multi-step process for maximum detail.
 
 ## Setup
 
@@ -24,7 +24,7 @@ A tool to turn books, YouTube videos, and **web articles** into **dense, pruned*
 
 ## Usage
 
-The tool automatically detects whether the input is a book title, a YouTube URL, or a web article URL.
+The tool automatically detects whether the input is a book title, a YouTube URL, a web article URL, or a local `.md` file.
 
 ### 📖 Prune a Book
 ```bash
@@ -41,6 +41,11 @@ node prune.mjs "https://www.youtube.com/watch?v=VIDEO_ID"
 node prune.mjs "https://example.com/interesting-article"
 ```
 
+### 📄 Prune a Local Markdown File
+```bash
+node prune.mjs "./my-document.md"
+```
+
 ### 🛠️ Options
 - `-o, --output <path>`: Specify output directory or file path.
 - `-b, --batch-size <number>`: Number of sections per batch (for YouTube and web articles).
@@ -53,6 +58,7 @@ node prune.mjs "https://example.com/interesting-article"
    - **Books**: Relies on LLM internal knowledge.
    - **YouTube**: Fetches transcripts using `yt-dlp`.
    - **Web Articles**: Extracts clean content using [defuddle](https://github.com/kepano/defuddle).
+   - **Local Markdown**: Reads the contents of the local `.md` file directly.
 2. **Step 1: Outline Generation**: The LLM analyzes the source content to create a detailed logical outline.
 3. **Step 2: Section Pruning**: For each section in the outline, the LLM generates:
    - **内容精简 (Dense Reconstruction)**: A high-density version of the core content.
@@ -60,7 +66,7 @@ node prune.mjs "https://example.com/interesting-article"
    - **原文摘录 (Original Excerpts)**: Direct quotes from the source for context.
 
 ### Features
-- **Automatic Type Detection**: Handles books, videos, and articles seamlessly.
+- **Automatic Type Detection**: Handles books, videos, articles, and local markdown files seamlessly.
 - **Parallel Processing**: Uses concurrency to speed up the pruning process.
 - **Resumable Caching**: Results are cached in `.cache/`, allowing you to resume if interrupted.
 - **Smart Formatting**: Combines results into a single, well-formatted Markdown file.
