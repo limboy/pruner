@@ -199,7 +199,7 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
   }
 
   const baseUrl = process.env.API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  const modelName = process.env.MODEL || "gemini-1.5-pro";
+  const modelName = process.env.MODEL || "gemini-3-flash-preview";
 
   async function chat(prompt) {
     const res = await fetch(`${baseUrl}/chat/completions`, {
