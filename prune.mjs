@@ -281,8 +281,8 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
     throw new Error('API_KEY is missing in .env file');
   }
 
-  const baseUrl = process.env.API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  const modelName = process.env.MODEL || "gemini-3-flash-preview";
+  const baseUrl = process.env.API_BASE_URL || 'https://openrouter.ai/api/v1';
+  const modelName = process.env.MODEL || "deepseek/deepseek-v4-flash";
 
   async function chat(prompt) {
     const res = await fetch(`${baseUrl}/chat/completions`, {

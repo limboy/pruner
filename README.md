@@ -15,8 +15,8 @@ A tool to turn books, YouTube videos, **web articles**, and **local markdown fil
    Create a `.env` file and add your API details:
    ```env
    API_KEY=your_api_key
-   API_BASE_URL=https://... (optional, defaults to Gemini API)
-   MODEL=... (optional, defaults to gemini-3-flash-preview)
+   API_BASE_URL=https://openrouter.ai/api/v1 (defaults to OpenRouter)
+   MODEL=deepseek/deepseek-v4-flash (defaults to deepseek/deepseek-v4-flash)
    SECTIONS_PER_BATCH=3 (optional, default: 3)
    CONCURRENCY=3 (optional, default: 3)
    OUTPUT_LANG=Chinese (optional, default: Chinese)
