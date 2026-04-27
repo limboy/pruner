@@ -34,8 +34,14 @@ program
   .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
   .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
   .action(async (input, opts) => {
-    const isYoutube = input.includes('youtube.com') || input.includes('youtu.be');
-    const type = isYoutube ? 'youtube' : 'book';
+    let type = 'book';
+    if (input.startsWith('http://') || input.startsWith('https://')) {
+      if (input.includes('youtube.com') || input.includes('youtu.be')) {
+        type = 'youtube';
+      } else {
+        type = 'url';
+      }
+    }
     await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10));
   });
 
@@ -54,6 +60,13 @@ async function handlePrune(type, input, output, batchSize, concurrency) {
         throw new Error('Could not retrieve YouTube transcript.');
       }
       title = await fetchYoutubeTitle(input);
+    } else if (type === 'url') {
+      const parsed = await fetchUrlContent(input);
+      sourceContent = parsed.content;
+      if (!sourceContent) {
+        throw new Error('Could not retrieve content from URL.');
+      }
+      title = parsed.title;
     }
 
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
@@ -63,6 +76,10 @@ async function handlePrune(type, input, output, batchSize, concurrency) {
     if (output) {
       if (output.endsWith('.md')) {
         outputPath = output;
+        const parentDir = dirname(outputPath);
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
+        }
       } else {
         fs.mkdirSync(output, { recursive: true });
         outputPath = resolve(output, `${title}.md`);
@@ -90,6 +107,19 @@ async function fetchYoutubeTitle(url) {
     }
   } catch {}
   return url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || 'video';
+}
+
+async function fetchUrlContent(url) {
+  try {
+    const output = execFileSync('npx', ['defuddle', 'parse', url, '--json'], { encoding: 'utf-8' });
+    const data = JSON.parse(output);
+    return {
+      content: data.contentMarkdown,
+      title: data.title || url
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch URL content: ${error.message}`);
+  }
 }
 
 function fetchYoutubeTranscript(url) {
@@ -215,13 +245,13 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
     return data.choices[0].message.content;
   }
 
-  if (type === 'youtube') {
-    return await pruneYoutube(chat, input, title, sourceContent, batchSize, concurrency);
+  if (type === 'youtube' || type === 'url') {
+    return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency);
   }
   return await pruneBook(chat, input, concurrency);
 }
 
-async function pruneYoutube(chat, input, title, sourceContent, batchSize, concurrency) {
+async function pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency) {
   let summary = '';
   let outline = [];
 
@@ -231,9 +261,10 @@ async function pruneYoutube(chat, input, title, sourceContent, batchSize, concur
     outline = cachedOutline.outline;
     console.log(chalk.gray('   (loaded from cache)'));
   } else {
-    const outlinePrompt = `请根据以下 YouTube 视频字幕内容，完成两件事。输出语言：中文。
+    const contentType = type === 'youtube' ? 'YouTube 视频字幕' : '网页文章';
+    const outlinePrompt = `请根据以下 ${contentType} 内容，完成两件事。输出语言：中文。
 
-1. 先用一段话概括整个视频的核心内容和主旨。
+1. 先用一段话概括整个内容的核心内容和主旨。
 2. 然后生成一个详细的内容大纲，将内容划分为逻辑清晰的模块，每行一个条目。
 
 请严格按以下格式输出，不要包含其他文字：
@@ -244,7 +275,7 @@ async function pruneYoutube(chat, input, title, sourceContent, batchSize, concur
 ===OUTLINE===
 [大纲条目，每行一个]
 
-字幕内容：
+内容如下：
 ${sourceContent}`;
 
     const outlineRaw = await chat(outlinePrompt);
@@ -281,7 +312,8 @@ ${sourceContent}`;
     }
 
     const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
-    const batchPrompt = `任务：根据以下视频字幕，为以下各部分分别提供"精简版（Pruned Version）"内容。输出语言：中文。
+    const contentType = type === 'youtube' ? '视频字幕' : '文章内容';
+    const batchPrompt = `任务：根据以下${contentType}，为以下各部分分别提供"精简版（Pruned Version）"内容。输出语言：中文。
 
 需要处理的部分：
 ${sectionList}
@@ -291,24 +323,24 @@ ${sectionList}
 ## [部分标题]
 
 ### 内容精简
-[该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、订阅提醒等。保留所有的核心洞察、关键事实、情节转折或逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
+[该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、无关修饰。保留所有的核心洞察、关键事实、逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
 
 ### 要点提炼
-- [关键洞察、事实或核心情节 1]
-- [关键洞察、事实或核心情节 2]
+- [关键洞察、事实或核心要点 1]
+- [关键洞察、事实或核心要点 2]
 - ...
 
 ### 原文摘录
-> [摘录该部分中最精彩、最有洞察力的原话，2-4段。保留说话者的原始措辞，不要改写。]
+> [摘录该部分中最精彩、最有洞察力的原话，2-4段。保留原始措辞，不要改写。]
 
 ---
 
-字幕内容：
+内容如下：
 ${sourceContent}
 
 要求：
 1. 确保输出的信息密度足够大。
-2. 即使不看视频，也能完全掌握每个部分讲述的关键点和细节。
+2. 即使不看原文，也能完全掌握每个部分讲述的关键点和细节。
 3. 请按顺序逐个输出每个部分，每个部分之间用 --- 分隔。`;
 
     let batchText = await chat(batchPrompt);
@@ -329,7 +361,8 @@ ${sourceContent}
     await Promise.all(batch);
   }
 
-  let fullResult = `# ${title} 精简版\n\n视频链接: ${input}\n\n`;
+  const sourceLink = type === 'youtube' ? `视频链接: ${input}` : `原文链接: ${input}`;
+  let fullResult = `# ${title} 精简版\n\n${sourceLink}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
   let combined = results.join('\n\n---\n\n');
   let sectionNum = 0;
