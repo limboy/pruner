@@ -6,7 +6,7 @@ A tool to turn books, YouTube videos, **web articles**, and **local markdown fil
 
 1. **Prerequisites**:
    - Node.js installed.
-   - [yt-dlp](https://github.com/yt-dlp/yt-dlp) installed (required for YouTube transcripts).
+   - [yt-dlp](https://github.com/yt-dlp/yt-dlp) installed (optional, only required for YouTube transcripts).
 2. **Install dependencies**:
    ```bash
    npm install
