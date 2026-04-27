@@ -23,6 +23,43 @@ try {
 
 const CACHE_DIR = resolve(__dirname, '.cache');
 
+const LANG_MAP = {
+  zh: 'Chinese', cn: 'Chinese', chinese: 'Chinese', 中文: 'Chinese',
+  en: 'English', english: 'English',
+  ja: 'Japanese', jp: 'Japanese', japanese: 'Japanese',
+  ko: 'Korean', kr: 'Korean', korean: 'Korean',
+  fr: 'French', french: 'French',
+  de: 'German', german: 'German',
+  es: 'Spanish', spanish: 'Spanish',
+  pt: 'Portuguese', portuguese: 'Portuguese',
+  ru: 'Russian', russian: 'Russian',
+  ar: 'Arabic', arabic: 'Arabic',
+};
+
+function resolveLang(lang) {
+  return LANG_MAP[lang.toLowerCase()] || lang;
+}
+
+function getLabels(lang) {
+  const resolved = resolveLang(lang);
+  const isChinese = resolved === 'Chinese';
+  return isChinese ? {
+    prunedSuffix: '精简版',
+    videoLink: '视频链接',
+    articleLink: '原文链接',
+    contentPrune: '内容精简',
+    keyPoints: '要点提炼',
+    excerpts: '原文摘录',
+  } : {
+    prunedSuffix: 'Pruned Version',
+    videoLink: 'Video',
+    articleLink: 'Source',
+    contentPrune: 'Dense Reconstruction',
+    keyPoints: 'Key Takeaways',
+    excerpts: 'Original Excerpts',
+  };
+}
+
 const program = new Command();
 
 program
@@ -33,6 +70,7 @@ program
   .option('-o, --output <path>', 'Output directory or file path')
   .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
   .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
+  .option('-l, --lang <language>', 'Output language', process.env.OUTPUT_LANG || 'Chinese')
   .action(async (input, opts) => {
     let type = 'book';
     if (input.startsWith('http://') || input.startsWith('https://')) {
@@ -42,12 +80,13 @@ program
         type = 'url';
       }
     }
-    await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10));
+    await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10), opts.lang);
   });
 
 program.parse();
 
-async function handlePrune(type, input, output, batchSize, concurrency) {
+async function handlePrune(type, input, output, batchSize, concurrency, lang) {
+  lang = resolveLang(lang);
   try {
     console.log(chalk.blue(`\n🚀 Processing ${type}: ${chalk.bold(input)}...`));
 
@@ -70,7 +109,7 @@ async function handlePrune(type, input, output, batchSize, concurrency) {
     }
 
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
-    const pruned = await pruneContent(type, input, title, sourceContent, batchSize, concurrency);
+    const pruned = await pruneContent(type, input, title, sourceContent, batchSize, concurrency, lang);
 
     let outputPath;
     if (output) {
@@ -222,7 +261,7 @@ function cleanCache(input) {
   } catch {}
 }
 
-async function pruneContent(type, input, title, sourceContent, batchSize, concurrency) {
+async function pruneContent(type, input, title, sourceContent, batchSize, concurrency, lang) {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error('API_KEY is missing in .env file');
@@ -246,12 +285,13 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
   }
 
   if (type === 'youtube' || type === 'url') {
-    return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency);
+    return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang);
   }
-  return await pruneBook(chat, input, concurrency);
+  return await pruneBook(chat, input, concurrency, lang);
 }
 
-async function pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency) {
+
+async function pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang) {
   let summary = '';
   let outline = [];
 
@@ -261,21 +301,21 @@ async function pruneGenericContent(chat, type, input, title, sourceContent, batc
     outline = cachedOutline.outline;
     console.log(chalk.gray('   (loaded from cache)'));
   } else {
-    const contentType = type === 'youtube' ? 'YouTube 视频字幕' : '网页文章';
-    const outlinePrompt = `请根据以下 ${contentType} 内容，完成两件事。输出语言：中文。
+    const contentType = type === 'youtube' ? 'YouTube video transcript' : 'web article';
+    const outlinePrompt = `Based on the following ${contentType} content, do two things. Output language: ${lang}.
 
-1. 先用一段话概括整个内容的核心内容和主旨。
-2. 然后生成一个详细的内容大纲，将内容划分为逻辑清晰的模块，每行一个条目。
+1. First, write a paragraph summarizing the core content and theme.
+2. Then generate a detailed content outline, dividing the content into logically clear modules, one item per line.
 
-请严格按以下格式输出，不要包含其他文字：
+Output strictly in the following format, do not include other text:
 
 ===SUMMARY===
-[概括内容]
+[summary content]
 
 ===OUTLINE===
-[大纲条目，每行一个]
+[outline items, one per line]
 
-内容如下：
+Content:
 ${sourceContent}`;
 
     const outlineRaw = await chat(outlinePrompt);
@@ -312,36 +352,37 @@ ${sourceContent}`;
     }
 
     const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
-    const contentType = type === 'youtube' ? '视频字幕' : '文章内容';
-    const batchPrompt = `任务：根据以下${contentType}，为以下各部分分别提供"精简版（Pruned Version）"内容。输出语言：中文。
+    const labels = getLabels(lang);
+    const contentType = type === 'youtube' ? 'video transcript' : 'article content';
+    const batchPrompt = `Task: Based on the following ${contentType}, provide a "Pruned Version" for each of the following sections. Output language: ${lang}.
 
-需要处理的部分：
+Sections to process:
 ${sectionList}
 
-请对每个部分按以下格式输出：
+For each section, output in this format:
 
-## [部分标题]
+## [Section Title]
 
-### 内容精简
-[该部分核心内容的高密度浓缩版本。删除所有的废话、重复点、无关修饰。保留所有的核心洞察、关键事实、逻辑步骤。保持具体的细节，使其在不看原文的情况下依然能被深度理解。]
+### ${labels.contentPrune}
+[High-density condensed version of the core content. Remove all filler, repetition, and irrelevant decoration. Retain all core insights, key facts, and logical steps. Keep specific details so it can be deeply understood without reading the original.]
 
-### 要点提炼
-- [关键洞察、事实或核心要点 1]
-- [关键洞察、事实或核心要点 2]
+### ${labels.keyPoints}
+- [Key insight, fact, or core point 1]
+- [Key insight, fact, or core point 2]
 - ...
 
-### 原文摘录
-> [摘录该部分中最精彩、最有洞察力的原话，2-4段。保留原始措辞，不要改写。]
+### ${labels.excerpts}
+> [Extract the most brilliant and insightful original quotes from this section, 2-4 passages. Preserve original wording, do not rewrite.]
 
 ---
 
-内容如下：
+Content:
 ${sourceContent}
 
-要求：
-1. 确保输出的信息密度足够大。
-2. 即使不看原文，也能完全掌握每个部分讲述的关键点和细节。
-3. 请按顺序逐个输出每个部分，每个部分之间用 --- 分隔。`;
+Requirements:
+1. Ensure the output has sufficiently high information density.
+2. Even without reading the original, one should fully grasp the key points and details of each section.
+3. Output each section in order, separated by ---.`;
 
     let batchText = await chat(batchPrompt);
     const firstHeading = batchText.indexOf('## ');
@@ -361,8 +402,9 @@ ${sourceContent}
     await Promise.all(batch);
   }
 
-  const sourceLink = type === 'youtube' ? `视频链接: ${input}` : `原文链接: ${input}`;
-  let fullResult = `# ${title} 精简版\n\n${sourceLink}\n\n`;
+  const labels = getLabels(lang);
+  const sourceLink = type === 'youtube' ? `${labels.videoLink}: ${input}` : `${labels.articleLink}: ${input}`;
+  let fullResult = `# ${title} ${labels.prunedSuffix}\n\n${sourceLink}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
   let combined = results.join('\n\n---\n\n');
   let sectionNum = 0;
@@ -371,7 +413,7 @@ ${sourceContent}
   return fullResult;
 }
 
-async function pruneBook(chat, input, concurrency) {
+async function pruneBook(chat, input, concurrency, lang) {
   let summary = '';
   let outline = [];
 
@@ -381,18 +423,18 @@ async function pruneBook(chat, input, concurrency) {
     outline = cachedOutline.outline;
     console.log(chalk.gray('   (loaded from cache)'));
   } else {
-    const outlinePrompt = `请为书籍《${input}》完成两件事。输出语言：中文。
+    const outlinePrompt = `Do two things for the book "${input}". Output language: ${lang}.
 
-1. 先用一段话概括这本书的核心内容和主旨。
-2. 然后生成一个详细的章节或主题大纲，每行一个条目。
+1. First, write a paragraph summarizing the core content and theme of this book.
+2. Then generate a detailed chapter/topic outline, one item per line.
 
-请严格按以下格式输出，不要包含其他文字：
+Output strictly in the following format, do not include other text:
 
 ===SUMMARY===
-[概括内容]
+[summary content]
 
 ===OUTLINE===
-[大纲条目，每行一个]`;
+[outline items, one per line]`;
 
     const outlineRaw = await chat(outlinePrompt);
     const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
@@ -421,28 +463,29 @@ async function pruneBook(chat, input, concurrency) {
       return;
     }
 
+    const labels = getLabels(lang);
     const sectionPrompt = `
-      任务：请为书籍《${input}》中的章节/主题"${section}"提供"精简版（Pruned Version）"内容。输出语言：中文。
+      Task: Provide a "Pruned Version" for the chapter/topic "${section}" from the book "${input}". Output language: ${lang}.
 
-      格式要求：
+      Format:
       ## ${section}
 
-      ### 内容精简
-      [在此处提供该部分核心内容的高密度压缩版本。无论是情节转折、人物发展还是核心理论、逻辑链条，都请提供深度的浓缩。删除所有冗余修饰，但保留支撑内容质感的核心细节和关键案例/场景，使其在不看原著的情况下依然能获得实质性的阅读体验。]
+      ### ${labels.contentPrune}
+      [Provide a high-density compressed version of the core content. Whether it's plot twists, character development, core theories, or logical chains, provide deep condensation. Remove all redundant decoration but retain core details and key cases/scenes that support content quality, enabling a substantive reading experience without the original.]
 
-      ### 要点提炼
-      - [核心点、关键情节、核心洞察或逻辑逻辑点 1]
-      - [核心点、关键情节、核心洞察或逻辑逻辑点 2]
+      ### ${labels.keyPoints}
+      - [Core point, key plot, insight, or logical point 1]
+      - [Core point, key plot, insight, or logical point 2]
       - ...
 
-      ### 原文摘录
-      > [摘录该章节中最精彩、最有洞察力或最具代表性的原文段落，2-4段。保留原文措辞，不要改写。]
+      ### ${labels.excerpts}
+      > [Extract the most brilliant, insightful, or representative original passages from this chapter, 2-4 passages. Preserve original wording, do not rewrite.]
 
-      要求：
-      1. 这不是简单的摘要，而是对原著内容的高密度重构。
-      2. 每一句话都应该具有极高的信息量。
-      3. 即使读者不看原著，也能通过这份内容获得接近原著的知识量或情节体验。
-      4. 原文摘录必须是书中的原话，选择最能体现该章节精髓的段落。
+      Requirements:
+      1. This is not a simple summary, but a high-density reconstruction of the original content.
+      2. Every sentence should carry extremely high information density.
+      3. Even without reading the original, readers should gain knowledge or plot experience close to the original.
+      4. Original excerpts must be actual quotes from the book, choosing passages that best embody the chapter's essence.
     `;
 
     let sectionText = await chat(sectionPrompt);
@@ -463,7 +506,8 @@ async function pruneBook(chat, input, concurrency) {
     await Promise.all(batch);
   }
 
-  let fullResult = `# 《${input}》 精简版\n\n`;
+  const labels = getLabels(lang);
+  let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
   fullResult += results.join('\n\n---\n\n');
 

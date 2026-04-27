@@ -19,6 +19,7 @@ A tool to turn books, YouTube videos, and **web articles** into **dense, pruned*
    MODEL=... (optional, defaults to gemini-3-flash-preview)
    SECTIONS_PER_BATCH=3 (optional, default: 3)
    CONCURRENCY=3 (optional, default: 3)
+   OUTPUT_LANG=Chinese (optional, default: Chinese)
    ```
 
 ## Usage
@@ -44,6 +45,7 @@ node prune.mjs "https://example.com/interesting-article"
 - `-o, --output <path>`: Specify output directory or file path.
 - `-b, --batch-size <number>`: Number of sections per batch (for YouTube and web articles).
 - `-c, --concurrency <number>`: Number of parallel requests to the LLM.
+- `-l, --lang <language>`: Output language (default: `Chinese`). Supports abbreviations: `en`, `zh`, `ja`, `ko`, `fr`, `de`, `es`, `pt`, `ru`, `ar`, or full names like `English`, `Japanese`, etc.
 
 ## How it works
 
