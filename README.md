@@ -1,6 +1,6 @@
 # Pruner ✂️
 
-A tool to turn books and YouTube videos into **dense, pruned** versions. Not a summary, but a concentrated extraction of knowledge using a multi-step process for maximum detail.
+A tool to turn books, YouTube videos, and **web articles** into **dense, pruned** versions. Not a summary, but a concentrated extraction of knowledge using a multi-step process for maximum detail.
 
 ## Setup
 
@@ -23,7 +23,7 @@ A tool to turn books and YouTube videos into **dense, pruned** versions. Not a s
 
 ## Usage
 
-The tool automatically detects whether the input is a book title or a YouTube URL.
+The tool automatically detects whether the input is a book title, a YouTube URL, or a web article URL.
 
 ### 📖 Prune a Book
 ```bash
@@ -35,21 +35,30 @@ node prune.mjs "Thinking, Fast and Slow"
 node prune.mjs "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
+### 🌐 Prune a Web Article
+```bash
+node prune.mjs "https://example.com/interesting-article"
+```
+
 ### 🛠️ Options
 - `-o, --output <path>`: Specify output directory or file path.
-- `-b, --batch-size <number>`: Number of sections per batch (for YouTube).
+- `-b, --batch-size <number>`: Number of sections per batch (for YouTube and web articles).
 - `-c, --concurrency <number>`: Number of parallel requests to the LLM.
 
 ## How it works
 
-1. **Step 1: Outline Generation**: The LLM analyzes the book (based on knowledge) or video (based on transcript) to create a detailed outline.
-2. **Step 2: Section Pruning**: For each section in the outline, the LLM generates:
+1. **Extraction**: 
+   - **Books**: Relies on LLM internal knowledge.
+   - **YouTube**: Fetches transcripts using `yt-dlp`.
+   - **Web Articles**: Extracts clean content using [defuddle](https://github.com/kepano/defuddle).
+2. **Step 1: Outline Generation**: The LLM analyzes the source content to create a detailed logical outline.
+3. **Step 2: Section Pruning**: For each section in the outline, the LLM generates:
    - **内容精简 (Dense Reconstruction)**: A high-density version of the core content.
    - **要点提炼 (Key Takeaways)**: Bullet points of key insights.
    - **原文摘录 (Original Excerpts)**: Direct quotes from the source for context.
 
 ### Features
-- **Automatic Type Detection**: No need to specify "book" or "youtube".
+- **Automatic Type Detection**: Handles books, videos, and articles seamlessly.
 - **Parallel Processing**: Uses concurrency to speed up the pruning process.
 - **Resumable Caching**: Results are cached in `.cache/`, allowing you to resume if interrupted.
 - **Smart Formatting**: Combines results into a single, well-formatted Markdown file.
