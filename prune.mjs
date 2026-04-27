@@ -93,8 +93,10 @@ async function fetchYoutubeTitle(url) {
 }
 
 function fetchYoutubeTranscript(url) {
-  const tmpFile = resolve(__dirname, `.cache/_sub_${Date.now()}`);
-  fs.mkdirSync(resolve(__dirname, '.cache'), { recursive: true });
+  const tmpBase = `_sub_${Date.now()}`;
+  const tmpFile = resolve(CACHE_DIR, tmpBase);
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  let foundFiles = [];
   try {
     execFileSync('yt-dlp', [
       '--cookies-from-browser', 'chrome',
@@ -102,18 +104,56 @@ function fetchYoutubeTranscript(url) {
       '--write-auto-sub', '--sub-lang', 'en', '--sub-format', 'json3',
       '--skip-download', '-o', tmpFile, url,
     ], { stdio: 'pipe' });
-    const data = JSON.parse(fs.readFileSync(`${tmpFile}.en.json3`, 'utf-8'));
-    return data.events
-      .filter(e => e.segs)
-      .map(e => e.segs.map(s => s.utf8).join(''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+
+    // yt-dlp may download as .json3 or .vtt depending on version/availability
+    foundFiles = fs.readdirSync(CACHE_DIR)
+      .filter(f => f.startsWith(tmpBase) && (f.endsWith('.json3') || f.endsWith('.vtt')));
+
+    if (foundFiles.length === 0) {
+      throw new Error('No subtitle file was downloaded by yt-dlp.');
+    }
+
+    const subFile = resolve(CACHE_DIR, foundFiles[0]);
+    const raw = fs.readFileSync(subFile, 'utf-8');
+
+    if (subFile.endsWith('.json3')) {
+      const data = JSON.parse(raw);
+      return data.events
+        .filter(e => e.segs)
+        .map(e => e.segs.map(s => s.utf8).join(''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Parse VTT format
+    return parseVtt(raw);
   } catch (error) {
     throw new Error(`Failed to fetch YouTube transcript: ${error.message}`);
   } finally {
-    try { fs.unlinkSync(`${tmpFile}.en.json3`); } catch {}
+    for (const f of foundFiles) {
+      try { fs.unlinkSync(resolve(CACHE_DIR, f)); } catch {}
+    }
   }
+}
+
+function parseVtt(vttContent) {
+  const lines = vttContent.split('\n');
+  const textLines = [];
+  const seen = new Set();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Skip headers, timestamps, and empty lines
+    if (!trimmed || trimmed === 'WEBVTT' || trimmed.startsWith('Kind:') ||
+        trimmed.startsWith('Language:') || trimmed.includes(' --> ')) continue;
+    // Remove VTT tags like <c> </c> and speaker tags like <v Name>
+    const cleaned = trimmed.replace(/<[^>]+>/g, '').trim();
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      textLines.push(cleaned);
+    }
+  }
+  return textLines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function cacheKey(input) {
