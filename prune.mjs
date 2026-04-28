@@ -117,9 +117,29 @@ program
 
 program.parse();
 
+function resolveOutputPath(output, title) {
+  if (output) {
+    if (output.endsWith('.md')) return output;
+    return resolve(output, `${title}.md`);
+  }
+  return `${title}.md`;
+}
+
 async function handlePrune(type, input, output, batchSize, concurrency, lang) {
   lang = resolveLang(lang);
   try {
+    // For types where title is known upfront, skip if output already exists
+    if (type === 'book' || type === 'markdown') {
+      const title = type === 'markdown'
+        ? input.replace(/^.*[\\\/]/, '').replace(/\.md$/i, '')
+        : input;
+      const outPath = resolveOutputPath(output, title);
+      if (fs.existsSync(outPath)) {
+        console.log(chalk.gray(`\n⏭️  Skipped (already exists): ${outPath}`));
+        return;
+      }
+    }
+
     console.log(chalk.blue(`\n🚀 Processing ${type}: ${chalk.bold(input)}...`));
 
     let sourceContent = '';
@@ -146,23 +166,22 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
       title = input.replace(/^.*[\\\/]/, '').replace(/\.md$/i, '');
     }
 
+    // For youtube/url, title is only known after fetching — check now
+    if (type === 'youtube' || type === 'url') {
+      const outPath = resolveOutputPath(output, title);
+      if (fs.existsSync(outPath)) {
+        console.log(chalk.gray(`\n⏭️  Skipped (already exists): ${outPath}`));
+        return;
+      }
+    }
+
     console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
     const pruned = await pruneContent(type, input, title, sourceContent, batchSize, concurrency, lang);
 
-    let outputPath;
-    if (output) {
-      if (output.endsWith('.md')) {
-        outputPath = output;
-        const parentDir = dirname(outputPath);
-        if (!fs.existsSync(parentDir)) {
-          fs.mkdirSync(parentDir, { recursive: true });
-        }
-      } else {
-        fs.mkdirSync(output, { recursive: true });
-        outputPath = resolve(output, `${title}.md`);
-      }
-    } else {
-      outputPath = `${title}.md`;
+    const outputPath = resolveOutputPath(output, title);
+    const parentDir = dirname(outputPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
     }
     fs.writeFileSync(outputPath, pruned);
     cleanCache(input);
