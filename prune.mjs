@@ -51,6 +51,7 @@ function getLabels(lang) {
     contentPrune: '内容精简',
     keyPoints: '要点提炼',
     excerpts: '原文摘录',
+    qaSection: '深度问答',
   } : {
     prunedSuffix: 'Pruned Version',
     videoLink: 'Video',
@@ -59,6 +60,7 @@ function getLabels(lang) {
     contentPrune: 'Dense Reconstruction',
     keyPoints: 'Key Takeaways',
     excerpts: 'Original Excerpts',
+    qaSection: 'Deep Q&A',
   };
 }
 
@@ -268,8 +270,9 @@ function cacheOutline(input, data) {
 function cleanCache(input) {
   try {
     const prefix = cacheKey(input);
+    const qaPrefix = cacheKey(input + '__qa');
     for (const f of fs.readdirSync(CACHE_DIR)) {
-      if (f.startsWith(prefix)) fs.unlinkSync(resolve(CACHE_DIR, f));
+      if (f.startsWith(prefix) || f.startsWith(qaPrefix)) fs.unlinkSync(resolve(CACHE_DIR, f));
     }
     if (fs.readdirSync(CACHE_DIR).length === 0) fs.rmdirSync(CACHE_DIR);
   } catch {}
@@ -301,9 +304,102 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
   if (type === 'youtube' || type === 'url' || type === 'markdown') {
     return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang);
   }
-  return await pruneBook(chat, input, concurrency, lang);
+  return await pruneBook(chat, input, batchSize, concurrency, lang);
 }
 
+
+async function generateQA(chat, input, sourceContent, batchSize, concurrency, lang) {
+  const labels = getLabels(lang);
+  const qaInput = input + '__qa';
+
+  let questions = [];
+  const cachedQ = getCachedOutline(qaInput);
+  if (cachedQ) {
+    questions = cachedQ.outline;
+    console.log(chalk.gray('   Q&A questions (loaded from cache)'));
+  } else {
+    console.log(chalk.yellow('❓ Generating essential questions...'));
+    const questionPrompt = sourceContent
+      ? `Based on the following content, generate 5-10 essential questions that would help a reader deeply understand the material. These questions should cover the most important concepts, arguments, insights, and implications. Output language: ${lang}.
+
+Output strictly as a numbered list, one question per line. Do not include any other text.
+
+Content:
+${sourceContent}`
+      : `For the book "${input}", generate 5-10 essential questions that would help a reader deeply understand the material. These questions should cover the most important concepts, arguments, insights, and implications. Output language: ${lang}.
+
+Output strictly as a numbered list, one question per line. Do not include any other text.`;
+
+    const questionsRaw = await chat(questionPrompt);
+    questions = questionsRaw.split('\n')
+      .map(line => line.replace(/^\d+[\.\、．)\]】\s]+/, '').trim())
+      .filter(line => line.length > 0);
+
+    cacheOutline(qaInput, { summary: '', outline: questions });
+  }
+
+  const batches = [];
+  for (let i = 0; i < questions.length; i += batchSize) {
+    batches.push(questions.slice(i, i + batchSize));
+  }
+
+  console.log(chalk.yellow(`❓ ${questions.length} questions in ${batches.length} batches. Getting answers (concurrency: ${concurrency})...`));
+
+  const answers = new Array(batches.length);
+  let completed = 0;
+
+  async function processQABatch(batchIndex) {
+    const batchQuestions = batches[batchIndex];
+    const cached = getCachedSection(qaInput, batchIndex);
+    if (cached) {
+      answers[batchIndex] = cached;
+      completed++;
+      console.log(chalk.gray(`   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} ${chalk.cyan('(cached)')}`));
+      return;
+    }
+
+    const questionList = batchQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    const answerPrompt = sourceContent
+      ? `Based on the following content, answer each question thoroughly and concisely. Each answer should be self-contained and provide deep insight. Output language: ${lang}.
+
+Questions:
+${questionList}
+
+For each question, output in this format. Do not include any preamble, introduction, or summary text before or after the Q&A pairs. Start directly with the first ### Q:
+
+### Q: [Question]
+[Detailed, insightful answer]
+
+Content:
+${sourceContent}`
+      : `Based on the book "${input}", answer each question thoroughly and concisely. Each answer should be self-contained and provide deep insight. Output language: ${lang}.
+
+Questions:
+${questionList}
+
+For each question, output in this format. Do not include any preamble, introduction, or summary text before or after the Q&A pairs. Start directly with the first ### Q:
+
+### Q: [Question]
+[Detailed, insightful answer]`;
+
+    let answerText = await chat(answerPrompt);
+    answerText = answerText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
+    const firstQ = answerText.indexOf('### Q:');
+    if (firstQ > 0) answerText = answerText.slice(firstQ);
+
+    answers[batchIndex] = answerText;
+    cacheSection(qaInput, batchIndex, answerText);
+    completed++;
+    console.log(chalk.gray(`   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} (${batchQuestions.length} questions) ${chalk.green('✓')}`));
+  }
+
+  for (let i = 0; i < batches.length; i += concurrency) {
+    const batch = batches.slice(i, i + concurrency).map((_, j) => processQABatch(i + j));
+    await Promise.all(batch);
+  }
+
+  return `\n\n---\n\n## ${labels.qaSection}\n\n${answers.join('\n\n')}`;
+}
 
 async function pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang) {
   let summary = '';
@@ -424,10 +520,14 @@ Requirements:
   let sectionNum = 0;
   combined = combined.replace(/^## \d+[\.\、．]\s*/gm, () => `## ${++sectionNum}. `);
   fullResult += combined;
+
+  const qa = await generateQA(chat, input, sourceContent, batchSize, concurrency, lang);
+  fullResult += qa;
+
   return fullResult;
 }
 
-async function pruneBook(chat, input, concurrency, lang) {
+async function pruneBook(chat, input, batchSize, concurrency, lang) {
   let summary = '';
   let outline = [];
 
@@ -524,6 +624,9 @@ Output strictly in the following format, do not include other text:
   let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
   fullResult += results.join('\n\n---\n\n');
+
+  const qa = await generateQA(chat, input, null, batchSize, concurrency, lang);
+  fullResult += qa;
 
   return fullResult;
 }
