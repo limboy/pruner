@@ -64,33 +64,55 @@ function getLabels(lang) {
   };
 }
 
+function detectInputType(input) {
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    if (input.includes('youtube.com') || input.includes('youtu.be')) {
+      return { type: 'youtube', resolved: input };
+    }
+    return { type: 'url', resolved: input };
+  }
+  if (input.endsWith('.md')) {
+    const fullPath = resolve(process.cwd(), input);
+    if (fs.existsSync(fullPath)) {
+      return { type: 'markdown', resolved: fullPath };
+    }
+  }
+  return { type: 'book', resolved: input };
+}
+
 const program = new Command();
 
 program
   .name('pruner')
   .description('Prune content from books or YouTube videos into a dense version.')
   .version('1.0.0')
-  .argument('<input>', 'Book title, YouTube URL, or local .md file')
+  .argument('<input>', 'Book title, YouTube URL, local .md file, or .txt file (one input per line)')
   .option('-o, --output <path>', 'Output directory or file path')
   .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
   .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
   .option('-l, --lang <language>', 'Output language', process.env.OUTPUT_LANG || 'Chinese')
   .action(async (input, opts) => {
-    let type = 'book';
-    if (input.startsWith('http://') || input.startsWith('https://')) {
-      if (input.includes('youtube.com') || input.includes('youtu.be')) {
-        type = 'youtube';
-      } else {
-        type = 'url';
-      }
-    } else if (input.endsWith('.md')) {
+    const batchSize = parseInt(opts.batchSize, 10);
+    const concurrency = parseInt(opts.concurrency, 10);
+
+    if (input.endsWith('.txt')) {
       const fullPath = resolve(process.cwd(), input);
       if (fs.existsSync(fullPath)) {
-        type = 'markdown';
-        input = fullPath;
+        const lines = fs.readFileSync(fullPath, 'utf-8')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l && !l.startsWith('#'));
+        console.log(chalk.blue(`\n📋 Found ${lines.length} inputs in ${input}`));
+        for (const line of lines) {
+          const { type, resolved } = detectInputType(line);
+          await handlePrune(type, resolved, opts.output, batchSize, concurrency, opts.lang);
+        }
+        return;
       }
     }
-    await handlePrune(type, input, opts.output, parseInt(opts.batchSize, 10), parseInt(opts.concurrency, 10), opts.lang);
+
+    const { type, resolved } = detectInputType(input);
+    await handlePrune(type, resolved, opts.output, batchSize, concurrency, opts.lang);
   });
 
 program.parse();
