@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import { execFileSync } from 'child_process';
-import chalk from 'chalk';
-import fs from 'fs';
-import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { Command } from "commander";
+import { execFileSync } from "child_process";
+import chalk from "chalk";
+import fs from "fs";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const envPath = resolve(__dirname, '.env');
+const envPath = resolve(__dirname, ".env");
 try {
-  for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIndex = trimmed.indexOf('=');
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIndex = trimmed.indexOf("=");
     if (eqIndex === -1) continue;
     const key = trimmed.slice(0, eqIndex).trim();
     const value = trimmed.slice(eqIndex + 1).trim();
@@ -21,19 +21,33 @@ try {
   }
 } catch {}
 
-const CACHE_DIR = resolve(__dirname, '.cache');
+const CACHE_DIR = resolve(__dirname, ".cache");
 
 const LANG_MAP = {
-  zh: 'Chinese', cn: 'Chinese', chinese: 'Chinese', 中文: 'Chinese',
-  en: 'English', english: 'English',
-  ja: 'Japanese', jp: 'Japanese', japanese: 'Japanese',
-  ko: 'Korean', kr: 'Korean', korean: 'Korean',
-  fr: 'French', french: 'French',
-  de: 'German', german: 'German',
-  es: 'Spanish', spanish: 'Spanish',
-  pt: 'Portuguese', portuguese: 'Portuguese',
-  ru: 'Russian', russian: 'Russian',
-  ar: 'Arabic', arabic: 'Arabic',
+  zh: "Chinese",
+  cn: "Chinese",
+  chinese: "Chinese",
+  中文: "Chinese",
+  en: "English",
+  english: "English",
+  ja: "Japanese",
+  jp: "Japanese",
+  japanese: "Japanese",
+  ko: "Korean",
+  kr: "Korean",
+  korean: "Korean",
+  fr: "French",
+  french: "French",
+  de: "German",
+  german: "German",
+  es: "Spanish",
+  spanish: "Spanish",
+  pt: "Portuguese",
+  portuguese: "Portuguese",
+  ru: "Russian",
+  russian: "Russian",
+  ar: "Arabic",
+  arabic: "Arabic",
 };
 
 function resolveLang(lang) {
@@ -42,97 +56,143 @@ function resolveLang(lang) {
 
 function getLabels(lang) {
   const resolved = resolveLang(lang);
-  const isChinese = resolved === 'Chinese';
-  return isChinese ? {
-    prunedSuffix: '精简版',
-    videoLink: '视频链接',
-    articleLink: '原文链接',
-    fileLink: '文件路径',
-    contentPrune: '内容精简',
-    keyPoints: '要点提炼',
-    excerpts: '原文摘录',
-    qaSection: '深度问答',
-  } : {
-    prunedSuffix: 'Pruned Version',
-    videoLink: 'Video',
-    articleLink: 'Source',
-    fileLink: 'File',
-    contentPrune: 'Dense Reconstruction',
-    keyPoints: 'Key Takeaways',
-    excerpts: 'Original Excerpts',
-    qaSection: 'Deep Q&A',
-  };
+  const isChinese = resolved === "Chinese";
+  return isChinese
+    ? {
+        prunedSuffix: "精简版",
+        videoLink: "视频链接",
+        articleLink: "原文链接",
+        fileLink: "文件路径",
+        contentPrune: "内容精简",
+        keyPoints: "要点提炼",
+        excerpts: "原文摘录",
+        qaSection: "深度问答",
+      }
+    : {
+        prunedSuffix: "Pruned Version",
+        videoLink: "Video",
+        articleLink: "Source",
+        fileLink: "File",
+        contentPrune: "Dense Reconstruction",
+        keyPoints: "Key Takeaways",
+        excerpts: "Original Excerpts",
+        qaSection: "Deep Q&A",
+      };
 }
 
 function detectInputType(input) {
-  if (input.startsWith('http://') || input.startsWith('https://')) {
-    if (input.includes('youtube.com') || input.includes('youtu.be')) {
-      return { type: 'youtube', resolved: input };
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    if (input.includes("youtube.com") || input.includes("youtu.be")) {
+      return { type: "youtube", resolved: input };
     }
-    return { type: 'url', resolved: input };
+    return { type: "url", resolved: input };
   }
-  if (input.endsWith('.md')) {
+  if (input.endsWith(".md")) {
     const fullPath = resolve(process.cwd(), input);
     if (fs.existsSync(fullPath)) {
-      return { type: 'markdown', resolved: fullPath };
+      return { type: "markdown", resolved: fullPath };
     }
   }
-  return { type: 'book', resolved: input };
+  return { type: "book", resolved: input };
 }
 
 const program = new Command();
 
 program
-  .name('pruner')
-  .description('Prune content from books or YouTube videos into a dense version.')
-  .version('1.0.0')
-  .argument('<input>', 'Book title, YouTube URL, local .md file, or .txt file (one input per line)')
-  .option('-o, --output <path>', 'Output directory or file path')
-  .option('-b, --batch-size <number>', 'Number of sections per batch', process.env.SECTIONS_PER_BATCH || '3')
-  .option('-c, --concurrency <number>', 'Number of parallel requests', process.env.CONCURRENCY || '3')
-  .option('-l, --lang <language>', 'Output language', process.env.OUTPUT_LANG || 'Chinese')
+  .name("pruner")
+  .description(
+    "Prune content from books or YouTube videos into a dense version.",
+  )
+  .version("1.0.0")
+  .argument(
+    "<input>",
+    "Book title, YouTube URL, local .md file, or .txt file (one input per line)",
+  )
+  .option("-o, --output <path>", "Output directory or file path")
+  .option(
+    "-b, --batch-size <number>",
+    "Number of sections per batch",
+    process.env.SECTIONS_PER_BATCH || "3",
+  )
+  .option(
+    "-c, --concurrency <number>",
+    "Number of parallel requests",
+    process.env.CONCURRENCY || "3",
+  )
+  .option(
+    "-l, --lang <language>",
+    "Output language",
+    process.env.OUTPUT_LANG || "Chinese",
+  )
   .action(async (input, opts) => {
     const batchSize = parseInt(opts.batchSize, 10);
     const concurrency = parseInt(opts.concurrency, 10);
 
-    if (input.endsWith('.txt')) {
+    if (input.endsWith(".txt")) {
       const fullPath = resolve(process.cwd(), input);
       if (fs.existsSync(fullPath)) {
-        const lines = fs.readFileSync(fullPath, 'utf-8')
-          .split('\n')
-          .map(l => l.trim())
-          .filter(l => l && !l.startsWith('#'));
-        console.log(chalk.blue(`\n📋 Found ${lines.length} inputs in ${input}`));
+        const lines = fs
+          .readFileSync(fullPath, "utf-8")
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith("#"));
+        console.log(
+          chalk.blue(`\n📋 Found ${lines.length} inputs in ${input}`),
+        );
         for (const line of lines) {
           const { type, resolved } = detectInputType(line);
-          await handlePrune(type, resolved, opts.output, batchSize, concurrency, opts.lang);
+          await handlePrune(
+            type,
+            resolved,
+            opts.output,
+            batchSize,
+            concurrency,
+            opts.lang,
+          );
         }
         return;
       }
     }
 
     const { type, resolved } = detectInputType(input);
-    await handlePrune(type, resolved, opts.output, batchSize, concurrency, opts.lang);
+    await handlePrune(
+      type,
+      resolved,
+      opts.output,
+      batchSize,
+      concurrency,
+      opts.lang,
+    );
   });
 
 program.parse();
 
+function sanitizeFilename(name) {
+  // Replace problematic characters : & / \ | # with '-' and trim whitespace
+  return String(name)
+    .replace(/[:&\/\\|#]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function resolveOutputPath(output, title) {
+  const safeTitle = sanitizeFilename(title);
   if (output) {
-    if (output.endsWith('.md')) return output;
-    return resolve(output, `${title}.md`);
+    if (output.endsWith(".md")) return output;
+    return resolve(output, `${safeTitle}.md`);
   }
-  return `${title}.md`;
+  return `${safeTitle}.md`;
 }
 
 async function handlePrune(type, input, output, batchSize, concurrency, lang) {
   lang = resolveLang(lang);
   try {
     // For types where title is known upfront, skip if output already exists
-    if (type === 'book' || type === 'markdown') {
-      const title = type === 'markdown'
-        ? input.replace(/^.*[\\\/]/, '').replace(/\.md$/i, '')
-        : input;
+    if (type === "book" || type === "markdown") {
+      const title =
+        type === "markdown"
+          ? input.replace(/^.*[\\\/]/, "").replace(/\.md$/i, "")
+          : input;
       const outPath = resolveOutputPath(output, title);
       if (fs.existsSync(outPath)) {
         console.log(chalk.gray(`\n⏭️  Skipped (already exists): ${outPath}`));
@@ -142,32 +202,32 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
 
     console.log(chalk.blue(`\n🚀 Processing ${type}: ${chalk.bold(input)}...`));
 
-    let sourceContent = '';
+    let sourceContent = "";
     let title = input;
 
-    if (type === 'youtube') {
+    if (type === "youtube") {
       sourceContent = await fetchYoutubeTranscript(input);
       if (!sourceContent) {
-        throw new Error('Could not retrieve YouTube transcript.');
+        throw new Error("Could not retrieve YouTube transcript.");
       }
       title = await fetchYoutubeTitle(input);
-    } else if (type === 'url') {
+    } else if (type === "url") {
       const parsed = await fetchUrlContent(input);
       sourceContent = parsed.content;
       if (!sourceContent) {
-        throw new Error('Could not retrieve content from URL.');
+        throw new Error("Could not retrieve content from URL.");
       }
       title = parsed.title;
-    } else if (type === 'markdown') {
-      sourceContent = fs.readFileSync(input, 'utf-8');
+    } else if (type === "markdown") {
+      sourceContent = fs.readFileSync(input, "utf-8");
       if (!sourceContent) {
-        throw new Error('Could not read content from markdown file.');
+        throw new Error("Could not read content from markdown file.");
       }
-      title = input.replace(/^.*[\\\/]/, '').replace(/\.md$/i, '');
+      title = input.replace(/^.*[\\\/]/, "").replace(/\.md$/i, "");
     }
 
     // For youtube/url, title is only known after fetching — check now
-    if (type === 'youtube' || type === 'url') {
+    if (type === "youtube" || type === "url") {
       const outPath = resolveOutputPath(output, title);
       if (fs.existsSync(outPath)) {
         console.log(chalk.gray(`\n⏭️  Skipped (already exists): ${outPath}`));
@@ -175,8 +235,16 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
       }
     }
 
-    console.log(chalk.yellow('✂️  Starting multi-step pruning process...'));
-    const pruned = await pruneContent(type, input, title, sourceContent, batchSize, concurrency, lang);
+    console.log(chalk.yellow("✂️  Starting multi-step pruning process..."));
+    const pruned = await pruneContent(
+      type,
+      input,
+      title,
+      sourceContent,
+      batchSize,
+      concurrency,
+      lang,
+    );
 
     const outputPath = resolveOutputPath(output, title);
     const parentDir = dirname(outputPath);
@@ -186,8 +254,11 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
     fs.writeFileSync(outputPath, pruned);
     cleanCache(input);
 
-    console.log(chalk.green(`\n✅ Done! Pruned version saved to: ${chalk.bold(outputPath)}`));
-
+    console.log(
+      chalk.green(
+        `\n✅ Done! Pruned version saved to: ${chalk.bold(outputPath)}`,
+      ),
+    );
   } catch (error) {
     console.error(chalk.red(`\n❌ Error: ${error.message}`));
   }
@@ -202,16 +273,18 @@ async function fetchYoutubeTitle(url) {
       if (data.title) return data.title.trim();
     }
   } catch {}
-  return url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || 'video';
+  return url.match(/(?:v=|youtu\.be\/)([^&]+)/)?.[1] || "video";
 }
 
 async function fetchUrlContent(url) {
   try {
-    const output = execFileSync('npx', ['defuddle', 'parse', url, '--json'], { encoding: 'utf-8' });
+    const output = execFileSync("npx", ["defuddle", "parse", url, "--json"], {
+      encoding: "utf-8",
+    });
     const data = JSON.parse(output);
     return {
       content: data.contentMarkdown,
-      title: data.title || url
+      title: data.title || url,
     };
   } catch (error) {
     throw new Error(`Failed to fetch URL content: ${error.message}`);
@@ -224,31 +297,48 @@ function fetchYoutubeTranscript(url) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
   let foundFiles = [];
   try {
-    execFileSync('yt-dlp', [
-      '--cookies-from-browser', 'chrome',
-      '--js-runtimes', 'node',
-      '--write-auto-sub', '--sub-lang', 'en', '--sub-format', 'json3',
-      '--skip-download', '-o', tmpFile, url,
-    ], { stdio: 'pipe' });
+    execFileSync(
+      "yt-dlp",
+      [
+        "--cookies-from-browser",
+        "chrome",
+        "--js-runtimes",
+        "node",
+        "--write-auto-sub",
+        "--sub-lang",
+        "en",
+        "--sub-format",
+        "json3",
+        "--skip-download",
+        "-o",
+        tmpFile,
+        url,
+      ],
+      { stdio: "pipe" },
+    );
 
     // yt-dlp may download as .json3 or .vtt depending on version/availability
-    foundFiles = fs.readdirSync(CACHE_DIR)
-      .filter(f => f.startsWith(tmpBase) && (f.endsWith('.json3') || f.endsWith('.vtt')));
+    foundFiles = fs
+      .readdirSync(CACHE_DIR)
+      .filter(
+        (f) =>
+          f.startsWith(tmpBase) && (f.endsWith(".json3") || f.endsWith(".vtt")),
+      );
 
     if (foundFiles.length === 0) {
-      throw new Error('No subtitle file was downloaded by yt-dlp.');
+      throw new Error("No subtitle file was downloaded by yt-dlp.");
     }
 
     const subFile = resolve(CACHE_DIR, foundFiles[0]);
-    const raw = fs.readFileSync(subFile, 'utf-8');
+    const raw = fs.readFileSync(subFile, "utf-8");
 
-    if (subFile.endsWith('.json3')) {
+    if (subFile.endsWith(".json3")) {
       const data = JSON.parse(raw);
       return data.events
-        .filter(e => e.segs)
-        .map(e => e.segs.map(s => s.utf8).join(''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
+        .filter((e) => e.segs)
+        .map((e) => e.segs.map((s) => s.utf8).join(""))
+        .join(" ")
+        .replace(/\s+/g, " ")
         .trim();
     }
 
@@ -258,81 +348,122 @@ function fetchYoutubeTranscript(url) {
     throw new Error(`Failed to fetch YouTube transcript: ${error.message}`);
   } finally {
     for (const f of foundFiles) {
-      try { fs.unlinkSync(resolve(CACHE_DIR, f)); } catch {}
+      try {
+        fs.unlinkSync(resolve(CACHE_DIR, f));
+      } catch {}
     }
   }
 }
 
 function parseVtt(vttContent) {
-  const lines = vttContent.split('\n');
+  const lines = vttContent.split("\n");
   const textLines = [];
   const seen = new Set();
   for (const line of lines) {
     const trimmed = line.trim();
     // Skip headers, timestamps, and empty lines
-    if (!trimmed || trimmed === 'WEBVTT' || trimmed.startsWith('Kind:') ||
-        trimmed.startsWith('Language:') || trimmed.includes(' --> ')) continue;
+    if (
+      !trimmed ||
+      trimmed === "WEBVTT" ||
+      trimmed.startsWith("Kind:") ||
+      trimmed.startsWith("Language:") ||
+      trimmed.includes(" --> ")
+    )
+      continue;
     // Remove VTT tags like <c> </c> and speaker tags like <v Name>
-    const cleaned = trimmed.replace(/<[^>]+>/g, '').trim();
+    const cleaned = trimmed.replace(/<[^>]+>/g, "").trim();
     if (cleaned && !seen.has(cleaned)) {
       seen.add(cleaned);
       textLines.push(cleaned);
     }
   }
-  return textLines.join(' ').replace(/\s+/g, ' ').trim();
+  return textLines.join(" ").replace(/\s+/g, " ").trim();
 }
 
 function cacheKey(input) {
-  return input.replace(/[^a-z0-9一-鿿]/gi, '_');
+  return input.replace(/[^a-z0-9一-鿿]/gi, "_");
 }
 
 function getCachedSection(input, index) {
   try {
-    return fs.readFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_${index}.md`), 'utf-8');
-  } catch { return null; }
+    return fs.readFileSync(
+      resolve(CACHE_DIR, `${cacheKey(input)}_${index}.md`),
+      "utf-8",
+    );
+  } catch {
+    return null;
+  }
 }
 
 function cacheSection(input, index, content) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_${index}.md`), content);
+  fs.writeFileSync(
+    resolve(CACHE_DIR, `${cacheKey(input)}_${index}.md`),
+    content,
+  );
 }
 
 function getCachedOutline(input) {
   try {
-    return JSON.parse(fs.readFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`), 'utf-8'));
-  } catch { return null; }
+    return JSON.parse(
+      fs.readFileSync(
+        resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`),
+        "utf-8",
+      ),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function cacheOutline(input, data) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`), JSON.stringify(data));
+  fs.writeFileSync(
+    resolve(CACHE_DIR, `${cacheKey(input)}_outline.json`),
+    JSON.stringify(data),
+  );
 }
 
 function cleanCache(input) {
   try {
     const prefix = cacheKey(input);
-    const qaPrefix = cacheKey(input + '__qa');
+    const qaPrefix = cacheKey(input + "__qa");
     for (const f of fs.readdirSync(CACHE_DIR)) {
-      if (f.startsWith(prefix) || f.startsWith(qaPrefix)) fs.unlinkSync(resolve(CACHE_DIR, f));
+      if (f.startsWith(prefix) || f.startsWith(qaPrefix))
+        fs.unlinkSync(resolve(CACHE_DIR, f));
     }
     if (fs.readdirSync(CACHE_DIR).length === 0) fs.rmdirSync(CACHE_DIR);
   } catch {}
 }
 
-async function pruneContent(type, input, title, sourceContent, batchSize, concurrency, lang) {
+async function pruneContent(
+  type,
+  input,
+  title,
+  sourceContent,
+  batchSize,
+  concurrency,
+  lang,
+) {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error('API_KEY is missing in .env file');
+    throw new Error("API_KEY is missing in .env file");
   }
 
-  const baseUrl = process.env.API_BASE_URL || 'https://openrouter.ai/api/v1';
+  const baseUrl = process.env.API_BASE_URL || "https://openrouter.ai/api/v1";
   const modelName = process.env.MODEL || "deepseek/deepseek-v4-flash";
 
   async function chat(prompt) {
     const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: modelName, messages: [{ role: 'user', content: prompt }] }),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [{ role: "user", content: prompt }],
+      }),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -342,24 +473,39 @@ async function pruneContent(type, input, title, sourceContent, batchSize, concur
     return data.choices[0].message.content;
   }
 
-  if (type === 'youtube' || type === 'url' || type === 'markdown') {
-    return await pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang);
+  if (type === "youtube" || type === "url" || type === "markdown") {
+    return await pruneGenericContent(
+      chat,
+      type,
+      input,
+      title,
+      sourceContent,
+      batchSize,
+      concurrency,
+      lang,
+    );
   }
   return await pruneBook(chat, input, batchSize, concurrency, lang);
 }
 
-
-async function generateQA(chat, input, sourceContent, batchSize, concurrency, lang) {
+async function generateQA(
+  chat,
+  input,
+  sourceContent,
+  batchSize,
+  concurrency,
+  lang,
+) {
   const labels = getLabels(lang);
-  const qaInput = input + '__qa';
+  const qaInput = input + "__qa";
 
   let questions = [];
   const cachedQ = getCachedOutline(qaInput);
   if (cachedQ) {
     questions = cachedQ.outline;
-    console.log(chalk.gray('   Q&A questions (loaded from cache)'));
+    console.log(chalk.gray("   Q&A questions (loaded from cache)"));
   } else {
-    console.log(chalk.yellow('❓ Generating essential questions...'));
+    console.log(chalk.yellow("❓ Generating essential questions..."));
     const questionPrompt = sourceContent
       ? `Based on the following content, generate 5-10 essential questions that would help a reader deeply understand the material. These questions should cover the most important concepts, arguments, insights, and implications. Output language: ${lang}.
 
@@ -372,11 +518,12 @@ ${sourceContent}`
 Output strictly as a numbered list, one question per line. Do not include any other text.`;
 
     const questionsRaw = await chat(questionPrompt);
-    questions = questionsRaw.split('\n')
-      .map(line => line.replace(/^\d+[\.\、．)\]】\s]+/, '').trim())
-      .filter(line => line.length > 0);
+    questions = questionsRaw
+      .split("\n")
+      .map((line) => line.replace(/^\d+[\.\、．)\]】\s]+/, "").trim())
+      .filter((line) => line.length > 0);
 
-    cacheOutline(qaInput, { summary: '', outline: questions });
+    cacheOutline(qaInput, { summary: "", outline: questions });
   }
 
   const batches = [];
@@ -384,7 +531,11 @@ Output strictly as a numbered list, one question per line. Do not include any ot
     batches.push(questions.slice(i, i + batchSize));
   }
 
-  console.log(chalk.yellow(`❓ ${questions.length} questions in ${batches.length} batches. Getting answers (concurrency: ${concurrency})...`));
+  console.log(
+    chalk.yellow(
+      `❓ ${questions.length} questions in ${batches.length} batches. Getting answers (concurrency: ${concurrency})...`,
+    ),
+  );
 
   const answers = new Array(batches.length);
   let completed = 0;
@@ -395,11 +546,17 @@ Output strictly as a numbered list, one question per line. Do not include any ot
     if (cached) {
       answers[batchIndex] = cached;
       completed++;
-      console.log(chalk.gray(`   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} ${chalk.cyan('(cached)')}`));
+      console.log(
+        chalk.gray(
+          `   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} ${chalk.cyan("(cached)")}`,
+        ),
+      );
       return;
     }
 
-    const questionList = batchQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    const questionList = batchQuestions
+      .map((q, i) => `${i + 1}. ${q}`)
+      .join("\n");
     const answerPrompt = sourceContent
       ? `Based on the following content, answer each question thoroughly and concisely. Each answer should be self-contained and provide deep insight. Output language: ${lang}.
 
@@ -424,35 +581,58 @@ For each question, output in this format. Do not include any preamble, introduct
 [Detailed, insightful answer]`;
 
     let answerText = await chat(answerPrompt);
-    answerText = answerText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
-    const firstQ = answerText.indexOf('### Q:');
+    answerText = answerText
+      .trim()
+      .replace(/^---+\s*\n*/, "")
+      .replace(/\n*---+\s*$/, "");
+    const firstQ = answerText.indexOf("### Q:");
     if (firstQ > 0) answerText = answerText.slice(firstQ);
 
     answers[batchIndex] = answerText;
     cacheSection(qaInput, batchIndex, answerText);
     completed++;
-    console.log(chalk.gray(`   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} (${batchQuestions.length} questions) ${chalk.green('✓')}`));
+    console.log(
+      chalk.gray(
+        `   [${completed}/${batches.length}] Q&A Batch ${batchIndex + 1} (${batchQuestions.length} questions) ${chalk.green("✓")}`,
+      ),
+    );
   }
 
   for (let i = 0; i < batches.length; i += concurrency) {
-    const batch = batches.slice(i, i + concurrency).map((_, j) => processQABatch(i + j));
+    const batch = batches
+      .slice(i, i + concurrency)
+      .map((_, j) => processQABatch(i + j));
     await Promise.all(batch);
   }
 
-  return `\n\n---\n\n## ${labels.qaSection}\n\n${answers.join('\n\n')}`;
+  return `\n\n---\n\n## ${labels.qaSection}\n\n${answers.join("\n\n")}`;
 }
 
-async function pruneGenericContent(chat, type, input, title, sourceContent, batchSize, concurrency, lang) {
-  let summary = '';
+async function pruneGenericContent(
+  chat,
+  type,
+  input,
+  title,
+  sourceContent,
+  batchSize,
+  concurrency,
+  lang,
+) {
+  let summary = "";
   let outline = [];
 
   const cachedOutline = getCachedOutline(input);
   if (cachedOutline) {
     summary = cachedOutline.summary;
     outline = cachedOutline.outline;
-    console.log(chalk.gray('   (loaded from cache)'));
+    console.log(chalk.gray("   (loaded from cache)"));
   } else {
-    const contentType = type === 'youtube' ? 'YouTube video transcript' : (type === 'markdown' ? 'markdown document' : 'web article');
+    const contentType =
+      type === "youtube"
+        ? "YouTube video transcript"
+        : type === "markdown"
+          ? "markdown document"
+          : "web article";
     const outlinePrompt = `Based on the following ${contentType} content, do two things. Output language: ${lang}.
 
 1. First, write a paragraph summarizing the core content and theme.
@@ -470,13 +650,18 @@ Content:
 ${sourceContent}`;
 
     const outlineRaw = await chat(outlinePrompt);
-    const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+    const summaryMatch = outlineRaw.match(
+      /===SUMMARY===\s*([\s\S]*?)===OUTLINE===/,
+    );
     const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
-    summary = summaryMatch ? summaryMatch[1].trim() : '';
+    summary = summaryMatch ? summaryMatch[1].trim() : "";
     const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
-    outline = outlineText.split('\n')
-      .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
-      .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+    outline = outlineText
+      .split("\n")
+      .map((line) => line.replace(/^[-*•\d.]+\s*/, "").trim())
+      .filter(
+        (line) => line.length > 0 && !line.toLowerCase().includes("outline"),
+      );
 
     cacheOutline(input, { summary, outline });
   }
@@ -487,7 +672,11 @@ ${sourceContent}`;
     batches.push(outline.slice(i, i + SECTIONS_PER_BATCH));
   }
 
-  console.log(chalk.yellow(`📖 Found ${outline.length} sections in ${batches.length} batches. Generating dense content (concurrency: ${concurrency})...`));
+  console.log(
+    chalk.yellow(
+      `📖 Found ${outline.length} sections in ${batches.length} batches. Generating dense content (concurrency: ${concurrency})...`,
+    ),
+  );
 
   const results = new Array(batches.length);
   let completed = 0;
@@ -498,13 +687,22 @@ ${sourceContent}`;
     if (cached) {
       results[batchIndex] = cached;
       completed++;
-      console.log(chalk.gray(`   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.cyan('(cached)')}`));
+      console.log(
+        chalk.gray(
+          `   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.cyan("(cached)")}`,
+        ),
+      );
       return;
     }
 
-    const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    const sectionList = sections.map((s, i) => `${i + 1}. ${s}`).join("\n");
     const labels = getLabels(lang);
-    const contentType = type === 'youtube' ? 'video transcript' : (type === 'markdown' ? 'markdown document' : 'article content');
+    const contentType =
+      type === "youtube"
+        ? "video transcript"
+        : type === "markdown"
+          ? "markdown document"
+          : "article content";
     const batchPrompt = `Task: Based on the following ${contentType}, provide a "Pruned Version" for each of the following sections. Output language: ${lang}.
 
 Sections to process:
@@ -536,47 +734,71 @@ Requirements:
 3. Output each section in order, separated by ---.`;
 
     let batchText = await chat(batchPrompt);
-    const firstHeading = batchText.indexOf('## ');
+    const firstHeading = batchText.indexOf("## ");
     if (firstHeading > 0) batchText = batchText.slice(firstHeading);
-    
+
     // Trim and remove leading/trailing separators to avoid double HRs when joining
-    batchText = batchText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
-    
+    batchText = batchText
+      .trim()
+      .replace(/^---+\s*\n*/, "")
+      .replace(/\n*---+\s*$/, "");
+
     results[batchIndex] = batchText;
     cacheSection(input, batchIndex, batchText);
     completed++;
-    console.log(chalk.gray(`   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.green('✓')}`));
+    console.log(
+      chalk.gray(
+        `   [${completed}/${batches.length}] Batch ${batchIndex + 1} (${sections.length} sections) ${chalk.green("✓")}`,
+      ),
+    );
   }
 
   for (let i = 0; i < batches.length; i += concurrency) {
-    const batch = batches.slice(i, i + concurrency).map((_, j) => processBatch(i + j));
+    const batch = batches
+      .slice(i, i + concurrency)
+      .map((_, j) => processBatch(i + j));
     await Promise.all(batch);
   }
 
   const labels = getLabels(lang);
-  const sourceLink = type === 'youtube' ? `${labels.videoLink}: ${input}` : (type === 'markdown' ? `${labels.fileLink}: ${input}` : `${labels.articleLink}: ${input}`);
+  const sourceLink =
+    type === "youtube"
+      ? `${labels.videoLink}: ${input}`
+      : type === "markdown"
+        ? `${labels.fileLink}: ${input}`
+        : `${labels.articleLink}: ${input}`;
   let fullResult = `# ${title} ${labels.prunedSuffix}\n\n${sourceLink}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
-  let combined = results.join('\n\n---\n\n');
+  let combined = results.join("\n\n---\n\n");
   let sectionNum = 0;
-  combined = combined.replace(/^## \d+[\.\、．]\s*/gm, () => `## ${++sectionNum}. `);
+  combined = combined.replace(
+    /^## \d+[\.\、．]\s*/gm,
+    () => `## ${++sectionNum}. `,
+  );
   fullResult += combined;
 
-  const qa = await generateQA(chat, input, sourceContent, batchSize, concurrency, lang);
+  const qa = await generateQA(
+    chat,
+    input,
+    sourceContent,
+    batchSize,
+    concurrency,
+    lang,
+  );
   fullResult += qa;
 
   return fullResult;
 }
 
 async function pruneBook(chat, input, batchSize, concurrency, lang) {
-  let summary = '';
+  let summary = "";
   let outline = [];
 
   const cachedOutline = getCachedOutline(input);
   if (cachedOutline) {
     summary = cachedOutline.summary;
     outline = cachedOutline.outline;
-    console.log(chalk.gray('   (loaded from cache)'));
+    console.log(chalk.gray("   (loaded from cache)"));
   } else {
     const outlinePrompt = `Do two things for the book "${input}". Output language: ${lang}.
 
@@ -592,18 +814,27 @@ Output strictly in the following format, do not include other text:
 [outline items, one per line]`;
 
     const outlineRaw = await chat(outlinePrompt);
-    const summaryMatch = outlineRaw.match(/===SUMMARY===\s*([\s\S]*?)===OUTLINE===/);
+    const summaryMatch = outlineRaw.match(
+      /===SUMMARY===\s*([\s\S]*?)===OUTLINE===/,
+    );
     const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
-    summary = summaryMatch ? summaryMatch[1].trim() : '';
+    summary = summaryMatch ? summaryMatch[1].trim() : "";
     const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
-    outline = outlineText.split('\n')
-      .map(line => line.replace(/^[-*•\d.]+\s*/, '').trim())
-      .filter(line => line.length > 0 && !line.toLowerCase().includes('outline'));
+    outline = outlineText
+      .split("\n")
+      .map((line) => line.replace(/^[-*•\d.]+\s*/, "").trim())
+      .filter(
+        (line) => line.length > 0 && !line.toLowerCase().includes("outline"),
+      );
 
     cacheOutline(input, { summary, outline });
   }
 
-  console.log(chalk.yellow(`📖 Found ${outline.length} sections. Generating dense content (concurrency: ${concurrency})...`));
+  console.log(
+    chalk.yellow(
+      `📖 Found ${outline.length} sections. Generating dense content (concurrency: ${concurrency})...`,
+    ),
+  );
 
   const results = new Array(outline.length);
   let completed = 0;
@@ -614,7 +845,11 @@ Output strictly in the following format, do not include other text:
     if (cached) {
       results[i] = cached;
       completed++;
-      console.log(chalk.gray(`   [${completed}/${outline.length}] ${section} ${chalk.cyan('(cached)')}`));
+      console.log(
+        chalk.gray(
+          `   [${completed}/${outline.length}] ${section} ${chalk.cyan("(cached)")}`,
+        ),
+      );
       return;
     }
 
@@ -644,27 +879,36 @@ Output strictly in the following format, do not include other text:
     `;
 
     let sectionText = await chat(sectionPrompt);
-    const headingPos = sectionText.indexOf('## ');
+    const headingPos = sectionText.indexOf("## ");
     if (headingPos > 0) sectionText = sectionText.slice(headingPos);
 
     // Trim and remove leading/trailing separators to avoid double HRs when joining
-    sectionText = sectionText.trim().replace(/^---+\s*\n*/, '').replace(/\n*---+\s*$/, '');
+    sectionText = sectionText
+      .trim()
+      .replace(/^---+\s*\n*/, "")
+      .replace(/\n*---+\s*$/, "");
 
     results[i] = sectionText;
     cacheSection(input, i, sectionText);
     completed++;
-    console.log(chalk.gray(`   [${completed}/${outline.length}] ${section} ${chalk.green('✓')}`));
+    console.log(
+      chalk.gray(
+        `   [${completed}/${outline.length}] ${section} ${chalk.green("✓")}`,
+      ),
+    );
   }
 
   for (let i = 0; i < outline.length; i += concurrency) {
-    const batch = outline.slice(i, i + concurrency).map((_, j) => processSection(i + j));
+    const batch = outline
+      .slice(i, i + concurrency)
+      .map((_, j) => processSection(i + j));
     await Promise.all(batch);
   }
 
   const labels = getLabels(lang);
   let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
   if (summary) fullResult += `> ${summary}\n\n`;
-  fullResult += results.join('\n\n---\n\n');
+  fullResult += results.join("\n\n---\n\n");
 
   const qa = await generateQA(chat, input, null, batchSize, concurrency, lang);
   fullResult += qa;
