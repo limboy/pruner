@@ -67,6 +67,10 @@ function getLabels(lang) {
         keyPoints: "要点提炼",
         excerpts: "原文摘录",
         qaSection: "深度问答",
+        plotPrune: "剧情精简",
+        synopsis: "简介",
+        highlights: "看点提炼",
+        classicLines: "经典台词",
       }
     : {
         prunedSuffix: "Pruned Version",
@@ -77,6 +81,10 @@ function getLabels(lang) {
         keyPoints: "Key Takeaways",
         excerpts: "Original Excerpts",
         qaSection: "Deep Q&A",
+        plotPrune: "Plot Reconstruction",
+        synopsis: "Synopsis",
+        highlights: "Highlights",
+        classicLines: "Memorable Lines",
       };
 }
 
@@ -94,6 +102,49 @@ function detectInputType(input) {
     }
   }
   return { type: "book", resolved: input };
+}
+
+// Normalize a user-supplied --type value into a canonical type, or null if unset/unknown.
+function normalizeForcedType(t) {
+  if (!t) return null;
+  const v = String(t).toLowerCase().trim();
+  if (["tv", "series", "tvseries", "tv-series", "show"].includes(v)) return "tv";
+  if (["movie", "film"].includes(v)) return "movie";
+  if (["book"].includes(v)) return "book";
+  return null;
+}
+
+// Detect a season specifier in a TV title, e.g. "Chernobyl S01", "Breaking Bad S2",
+// "The Wire Season 1". Returns { show, seasonNum } or null. When present, each
+// episode of that season is pruned individually (like a movie).
+function parseSeason(title) {
+  const m = title.match(/\b(?:s|season)\s*0*(\d+)\b/i);
+  if (!m) return null;
+  const seasonNum = parseInt(m[1], 10);
+  const show = title.replace(m[0], "").replace(/\s+/g, " ").trim();
+  if (!show) return null;
+  return { show, seasonNum };
+}
+
+// Strip any leading "Chapter N:" / "第N章" prefix from markdown headings, keeping
+// only the descriptive title.
+function stripChapterPrefix(text) {
+  return text
+    .replace(/^(#{2,4})\s*Chapter\s*\d+\s*[:：.、)\]]?\s*/gim, "$1 ")
+    .replace(
+      /^(#{2,4})\s*第\s*[\d一二三四五六七八九十百零]+\s*章\s*[:：.、)\]]?\s*/gim,
+      "$1 ",
+    );
+}
+
+// Apply a forced type (from --type) on top of auto-detection. Title-based types
+// (book/tv/movie) treat the raw input as the title.
+function resolveInputType(input, forcedType) {
+  const forced = normalizeForcedType(forcedType);
+  if (forced) {
+    return { type: forced, resolved: input };
+  }
+  return detectInputType(input);
 }
 
 const program = new Command();
@@ -124,6 +175,10 @@ program
     "Output language",
     process.env.OUTPUT_LANG || "Chinese",
   )
+  .option(
+    "-t, --type <type>",
+    "Force input type: book, tv, or movie (overrides auto-detection)",
+  )
   .action(async (input, opts) => {
     const batchSize = parseInt(opts.batchSize, 10);
     const concurrency = parseInt(opts.concurrency, 10);
@@ -140,7 +195,7 @@ program
           chalk.blue(`\n📋 Found ${lines.length} inputs in ${input}`),
         );
         for (const line of lines) {
-          const { type, resolved } = detectInputType(line);
+          const { type, resolved } = resolveInputType(line, opts.type);
           await handlePrune(
             type,
             resolved,
@@ -154,7 +209,7 @@ program
       }
     }
 
-    const { type, resolved } = detectInputType(input);
+    const { type, resolved } = resolveInputType(input, opts.type);
     await handlePrune(
       type,
       resolved,
@@ -188,7 +243,12 @@ async function handlePrune(type, input, output, batchSize, concurrency, lang) {
   lang = resolveLang(lang);
   try {
     // For types where title is known upfront, skip if output already exists
-    if (type === "book" || type === "markdown") {
+    if (
+      type === "book" ||
+      type === "markdown" ||
+      type === "tv" ||
+      type === "movie"
+    ) {
       const title =
         type === "markdown"
           ? input.replace(/^.*[\\\/]/, "").replace(/\.md$/i, "")
@@ -485,6 +545,16 @@ async function pruneContent(
       lang,
     );
   }
+  if (type === "tv" || type === "movie") {
+    return await pruneVisualMedia(
+      chat,
+      type,
+      input,
+      batchSize,
+      concurrency,
+      lang,
+    );
+  }
   return await pruneBook(chat, input, batchSize, concurrency, lang);
 }
 
@@ -495,6 +565,7 @@ async function generateQA(
   batchSize,
   concurrency,
   lang,
+  subject = "book",
 ) {
   const labels = getLabels(lang);
   const qaInput = input + "__qa";
@@ -513,7 +584,7 @@ Output strictly as a numbered list, one question per line. Do not include any ot
 
 Content:
 ${sourceContent}`
-      : `For the book "${input}", generate 5-10 essential questions that would help a reader deeply understand the material. These questions should cover the most important concepts, arguments, insights, and implications. Output language: ${lang}.
+      : `For the ${subject} "${input}", generate 5-10 essential questions that would help someone deeply understand it. These questions should cover the most important concepts, plot points, characters, themes, insights, and implications. Output language: ${lang}.
 
 Output strictly as a numbered list, one question per line. Do not include any other text.`;
 
@@ -570,7 +641,7 @@ For each question, output in this format. Do not include any preamble, introduct
 
 Content:
 ${sourceContent}`
-      : `Based on the book "${input}", answer each question thoroughly and concisely. Each answer should be self-contained and provide deep insight. Output language: ${lang}.
+      : `Based on the ${subject} "${input}", answer each question thoroughly and concisely. Each answer should be self-contained and provide deep insight. Output language: ${lang}.
 
 Questions:
 ${questionList}
@@ -911,6 +982,220 @@ Output strictly in the following format, do not include other text:
   fullResult += results.join("\n\n---\n\n");
 
   const qa = await generateQA(chat, input, null, batchSize, concurrency, lang);
+  fullResult += qa;
+
+  return fullResult;
+}
+
+async function pruneVisualMedia(
+  chat,
+  type,
+  input,
+  batchSize,
+  concurrency,
+  lang,
+) {
+  // A "Chernobyl S01" style title means: prune each episode of that season individually.
+  const season = type === "tv" ? parseSeason(input) : null;
+  const isMovie = type === "movie";
+  // A movie is a single unit (chapters are top-level). TV produces multiple units
+  // (episodes or arcs), each becoming a container heading above its chapters.
+  const multiUnit = !isMovie;
+  const subject = isMovie ? "movie" : "TV series";
+  const unitName = isMovie ? "movie" : season ? "episode" : "season/story arc";
+  const unitPlural = isMovie ? "film" : season ? "episodes" : "arcs";
+
+  // The subject the season/arc list describes (TV only).
+  const outlineSubject = season
+    ? `Season ${season.seasonNum} of the TV series "${season.show}"`
+    : `the ${subject} "${input}"`;
+
+  let summary = "";
+  let units = [];
+
+  const cachedOutline = getCachedOutline(input);
+  if (cachedOutline) {
+    summary = cachedOutline.summary;
+    units = cachedOutline.outline;
+    console.log(chalk.gray("   (loaded from cache)"));
+  } else if (isMovie) {
+    // Single unit: we only need an overall summary; chapters are generated per-unit below.
+    const summaryPrompt = `Write a vivid, detailed overview (2-3 full paragraphs) of the movie "${input}" — its premise, the main characters, the overall arc of the plot, and its central themes — written so that a reader who has never seen it can picture what it is about and understand what happens. Output language: ${lang}. Output only the overview, with no preamble or heading.`;
+    summary = (await chat(summaryPrompt)).trim();
+    units = [input];
+    cacheOutline(input, { summary, outline: units });
+  } else {
+    // TV: overall summary + the list of episodes (season mode) or story arcs.
+    const segmentInstruction = season
+      ? "Then list every episode of this season in chronological order, one per line. Use the episode's title (and episode number if helpful)."
+      : "Then break the series down into its seasons or major story arcs in chronological order, one item per line.";
+    const outlinePrompt = `Do two things for ${outlineSubject}. Output language: ${lang}.
+
+1. First, write a vivid, detailed overview (2-3 full paragraphs) of the premise, the main characters, the overall plot arc, and the central themes, written so that a reader who has never seen it can picture what it is about and understand what happens.
+2. ${segmentInstruction}
+
+Output strictly in the following format, do not include other text:
+
+===SUMMARY===
+[summary content]
+
+===OUTLINE===
+[outline items, one per line]`;
+
+    const outlineRaw = await chat(outlinePrompt);
+    const summaryMatch = outlineRaw.match(
+      /===SUMMARY===\s*([\s\S]*?)===OUTLINE===/,
+    );
+    const outlineMatch = outlineRaw.match(/===OUTLINE===\s*([\s\S]*)/);
+    summary = summaryMatch ? summaryMatch[1].trim() : "";
+    const outlineText = outlineMatch ? outlineMatch[1] : outlineRaw;
+    units = outlineText
+      .split("\n")
+      .map((line) => line.replace(/^[-*•\d.]+\s*/, "").trim())
+      .filter(
+        (line) => line.length > 0 && !line.toLowerCase().includes("outline"),
+      );
+
+    cacheOutline(input, { summary, outline: units });
+  }
+
+  console.log(
+    chalk.yellow(
+      `🎬 Chapterizing ${units.length} ${unitPlural} (concurrency: ${concurrency})...`,
+    ),
+  );
+
+  const results = new Array(units.length);
+  let completed = 0;
+
+  async function processUnit(i) {
+    const unit = units[i];
+    const cached = getCachedSection(input, i);
+    if (cached) {
+      results[i] = cached;
+      completed++;
+      console.log(
+        chalk.gray(
+          `   [${completed}/${units.length}] ${unit} ${chalk.cyan("(cached)")}`,
+        ),
+      );
+      return;
+    }
+
+    const labels = getLabels(lang);
+    const target = season
+      ? `the episode "${unit}" from Season ${season.seasonNum} of the TV series "${season.show}"`
+      : isMovie
+        ? `the movie "${input}"`
+        : `the ${unitName} "${unit}" from the TV series "${input}"`;
+
+    // Shared chapter block format used for both movies and per-episode pruning.
+    const chapterFormat = `## <short descriptive chapter title>
+
+      ### ${labels.synopsis}
+      [A vivid, detailed account of what happens in this chapter — written so that a reader who has never seen it can clearly picture the scenes in their mind. Walk through the events in chronological order: describe the setting and atmosphere, what each character does and says, their motivations and emotional states, the telling visual and dramatic details, and the key turning points and their consequences. Be generous with concrete specifics, and aim for several full paragraphs rather than a terse summary.]
+
+      ### ${labels.highlights}
+      - [Key plot point, theme, character moment, or insight]
+      - ...
+
+      ### ${labels.classicLines}
+      > [1-3 of the most memorable or representative lines of dialogue from this chapter. Preserve the original wording. If exact quotes are uncertain, choose the most iconic, widely-recognized lines.]`;
+
+    let rendered;
+    if (multiUnit) {
+      // Treat each episode / arc as a standalone "movie": its own summary + chapters.
+      const unitPrompt = `
+      Task: Treat ${target} as a standalone work and prune it like a movie. Output language: ${lang}. Spoilers are expected and encouraged — the goal is to fully understand the story without watching.
+
+      1. First, write a vivid overview (1-2 full paragraphs) of ${target} — what it is about, who the key characters are, and the overall arc of what happens — written so that a reader who has never seen it can picture it and understand the story.
+      2. Then break it into its Chapters — logical narrative segments / scenes in chronological order — repeating the chapter block below for each chapter, separating chapters with a line containing only ---.
+
+      Output strictly in this format, nothing else:
+
+      ===SUMMARY===
+      [one paragraph]
+
+      ===CHAPTERS===
+      ${chapterFormat}
+
+      Requirements:
+      1. Divide it into roughly 4-8 chapters that follow the chronological flow.
+      2. Give each chapter a short, descriptive title — do NOT prefix it with "Chapter N" or any numbering.
+    `;
+
+      const raw = await chat(unitPrompt);
+      const summaryMatch = raw.match(/===SUMMARY===\s*([\s\S]*?)===CHAPTERS===/);
+      const chaptersMatch = raw.match(/===CHAPTERS===\s*([\s\S]*)/);
+      const unitSummary = summaryMatch ? summaryMatch[1].trim() : "";
+      let chaptersText = (chaptersMatch ? chaptersMatch[1] : raw).trim();
+      const headingPos = chaptersText.indexOf("## ");
+      if (headingPos > 0) chaptersText = chaptersText.slice(headingPos);
+      // Demote chapter headings one level so they sit under the unit heading.
+      chaptersText = stripChapterPrefix(chaptersText)
+        .replace(/^---+\s*\n*/, "")
+        .replace(/\n*---+\s*$/, "")
+        .replace(/^###/gm, "####")
+        .replace(/^##(?!#)/gm, "###");
+
+      rendered = `## ${unit}\n\n`;
+      if (unitSummary) rendered += `> ${unitSummary}\n\n`;
+      rendered += chaptersText;
+    } else {
+      // Movie: chapters at the top level; the overall summary sits at the document top.
+      const chapterPrompt = `
+      Task: Break ${target} down into its Chapters — logical narrative segments / scenes in chronological order. For EACH chapter, write a synopsis, highlights, and memorable lines. Output language: ${lang}. Spoilers are expected and encouraged — the goal is to fully understand the story without watching.
+
+      Output strictly in this format, repeating the block for each chapter and separating chapters with a line containing only ---:
+
+      ${chapterFormat}
+
+      Requirements:
+      1. Divide it into roughly 4-8 chapters that follow the chronological flow.
+      2. Give each chapter a short, descriptive title — do NOT prefix it with "Chapter N" or any numbering.
+      3. Output only the chapters in the format above, nothing else.
+    `;
+
+      let chaptersText = await chat(chapterPrompt);
+      const headingPos = chaptersText.indexOf("## ");
+      if (headingPos > 0) chaptersText = chaptersText.slice(headingPos);
+      rendered = stripChapterPrefix(chaptersText)
+        .trim()
+        .replace(/^---+\s*\n*/, "")
+        .replace(/\n*---+\s*$/, "");
+    }
+
+    results[i] = rendered;
+    cacheSection(input, i, rendered);
+    completed++;
+    console.log(
+      chalk.gray(
+        `   [${completed}/${units.length}] ${unit} ${chalk.green("✓")}`,
+      ),
+    );
+  }
+
+  for (let i = 0; i < units.length; i += concurrency) {
+    const batch = units
+      .slice(i, i + concurrency)
+      .map((_, j) => processUnit(i + j));
+    await Promise.all(batch);
+  }
+
+  const labels = getLabels(lang);
+  let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
+  if (summary) fullResult += `> ${summary}\n\n`;
+  fullResult += results.join("\n\n---\n\n");
+
+  const qa = await generateQA(
+    chat,
+    input,
+    null,
+    batchSize,
+    concurrency,
+    lang,
+    subject,
+  );
   fullResult += qa;
 
   return fullResult;

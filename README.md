@@ -46,11 +46,49 @@ node prune.mjs "https://example.com/interesting-article"
 node prune.mjs "./my-document.md"
 ```
 
+### 🎬 Prune a Movie or TV Series
+Plain titles auto-detect as books, so use `--type` to force a movie or TV series.
+The output is built from the LLM's internal knowledge (no source is fetched).
+Each unit is subdivided into **Chapters**, and every chapter gets a **简介
+(Synopsis)**, **看点提炼 (Highlights)**, and **经典台词 (Memorable Lines)**.
+**Spoilers are expected.**
+```bash
+node prune.mjs "Inception" --type movie
+node prune.mjs "Breaking Bad" --type tv
+```
+
+A **movie** is broken straight into chapters:
+```
+# 《Inception》 精简版
+## Chapter 1: ...
+### 简介 / ### 看点提炼 / ### 经典台词
+```
+
+**Per-episode mode:** add a season specifier (`S01`, `S2`, `Season 1`, …) to a TV
+title and each **episode** of that season is pruned independently — like its own
+standalone movie (an episode summary plus chapters) — and the episodes are then
+combined into a single document:
+```bash
+node prune.mjs "Chernobyl S01" --type tv
+node prune.mjs "Breaking Bad Season 1" --type tv
+```
+```
+# 《Chernobyl S01》 精简版
+> season summary
+## 第1集：1:23:45            (episode)
+> episode summary
+### Chapter 1: ...           (chapter)
+#### 简介 / #### 看点提炼 / #### 经典台词
+```
+Without a season specifier, the series is split into seasons / major story arcs
+(each pruned the same way) instead.
+
 ### 🛠️ Options
 - `-o, --output <path>`: Specify output directory or file path.
 - `-b, --batch-size <number>`: Number of sections per batch (for YouTube and web articles).
 - `-c, --concurrency <number>`: Number of parallel requests to the LLM.
 - `-l, --lang <language>`: Output language (default: `Chinese`). Supports abbreviations: `en`, `zh`, `ja`, `ko`, `fr`, `de`, `es`, `pt`, `ru`, `ar`, or full names like `English`, `Japanese`, etc.
+- `-t, --type <type>`: Force the input type, overriding auto-detection. Accepts `book`, `tv` (TV series), or `movie`. Required for movies/TV series since plain titles otherwise default to `book`.
 
 ## How it works
 
