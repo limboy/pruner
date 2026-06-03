@@ -1100,7 +1100,9 @@ Output strictly in the following format, do not include other text:
       - ...
 
       ### ${labels.classicLines}
-      > [1-3 of the most memorable or representative lines of dialogue from this chapter. Preserve the original wording. If exact quotes are uncertain, choose the most iconic, widely-recognized lines.]`;
+      > [The single most memorable line of dialogue from this chapter. Preserve the original wording. If exact quotes are uncertain, choose the most iconic, widely-recognized line.]
+      >
+      > [Another memorable line — each line of dialogue must be its own blockquote, separated by a blank "> " line as shown. Include every memorable, quotable line from the chapter; there is no upper limit, so err on the side of including more rather than fewer.]`;
 
     let rendered;
     if (multiUnit) {
