@@ -2,3 +2,4 @@ node_modules
 .env
 .claude
 .cache
+.DS_Store
