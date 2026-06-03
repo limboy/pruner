@@ -792,7 +792,7 @@ For each section, output in this format:
 - ...
 
 ### ${labels.excerpts}
-> [Extract the most brilliant and insightful original quotes from this section, 2-4 passages. Preserve original wording, do not rewrite.]
+> [Extract the most brilliant and insightful original quotes from this section, 2-4 passages. Preserve original wording, do not rewrite. Quote them in the work's original language; only if that language is neither English nor Chinese, translate them into Chinese instead.]
 
 ---
 
@@ -940,7 +940,7 @@ Output strictly in the following format, do not include other text:
       - ...
 
       ### ${labels.excerpts}
-      > [Extract the most brilliant, insightful, or representative original passages from this chapter, 2-4 passages. Preserve original wording, do not rewrite.]
+      > [Extract the most brilliant, insightful, or representative original passages from this chapter, 2-4 passages. Preserve original wording, do not rewrite. Quote them in the book's original language; only if that language is neither English nor Chinese, translate them into Chinese instead.]
 
       Requirements:
       1. This is not a simple summary, but a high-density reconstruction of the original content.
@@ -1100,7 +1100,7 @@ Output strictly in the following format, do not include other text:
       - ...
 
       ### ${labels.classicLines}
-      > [The single most memorable line of dialogue from this chapter. Preserve the original wording. If exact quotes are uncertain, choose the most iconic, widely-recognized line.]
+      > [The single most memorable line of dialogue from this chapter. Preserve the original wording. If exact quotes are uncertain, choose the most iconic, widely-recognized line. Quote dialogue in the work's original language; only if that language is neither English nor Chinese, translate it into Chinese instead.]
       >
       > [Another memorable line — each line of dialogue must be its own blockquote, separated by a blank "> " line as shown. Include every memorable, quotable line from the chapter; there is no upper limit, so err on the side of including more rather than fewer.]`;
 
