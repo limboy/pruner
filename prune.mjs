@@ -1139,7 +1139,7 @@ Output strictly in the following format, do not include other text:
         .replace(/^##(?!#)/gm, "###");
 
       rendered = `## ${unit}\n\n`;
-      if (unitSummary) rendered += `> ${unitSummary}\n\n`;
+      if (unitSummary) rendered += `${unitSummary}\n\n`;
       rendered += chaptersText;
     } else {
       // Movie: chapters at the top level; the overall summary sits at the document top.
@@ -1184,7 +1184,7 @@ Output strictly in the following format, do not include other text:
 
   const labels = getLabels(lang);
   let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
-  if (summary) fullResult += `> ${summary}\n\n`;
+  if (summary) fullResult += `${summary}\n\n`;
   fullResult += results.join("\n\n---\n\n");
 
   const qa = await generateQA(
