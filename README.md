@@ -74,9 +74,9 @@ node prune.mjs "Breaking Bad Season 1" --type tv
 ```
 ```
 # 《Chernobyl S01》 精简版
-> season summary
+season summary
 ## 第1集：1:23:45            (episode)
-> episode summary
+episode summary
 ### Chapter 1: ...           (chapter)
 #### 简介 / #### 看点提炼 / #### 经典台词
 ```

@@ -108,7 +108,8 @@ function detectInputType(input) {
 function normalizeForcedType(t) {
   if (!t) return null;
   const v = String(t).toLowerCase().trim();
-  if (["tv", "series", "tvseries", "tv-series", "show"].includes(v)) return "tv";
+  if (["tv", "series", "tvseries", "tv-series", "show"].includes(v))
+    return "tv";
   if (["movie", "film"].includes(v)) return "movie";
   if (["book"].includes(v)) return "book";
   return null;
@@ -839,7 +840,7 @@ Requirements:
         ? `${labels.fileLink}: ${input}`
         : `${labels.articleLink}: ${input}`;
   let fullResult = `# ${title} ${labels.prunedSuffix}\n\n${sourceLink}\n\n`;
-  if (summary) fullResult += `> ${summary}\n\n`;
+  if (summary) fullResult += `${summary}\n\n`;
   let combined = results.join("\n\n---\n\n");
   let sectionNum = 0;
   combined = combined.replace(
@@ -978,7 +979,7 @@ Output strictly in the following format, do not include other text:
 
   const labels = getLabels(lang);
   let fullResult = `# 《${input}》 ${labels.prunedSuffix}\n\n`;
-  if (summary) fullResult += `> ${summary}\n\n`;
+  if (summary) fullResult += `${summary}\n\n`;
   fullResult += results.join("\n\n---\n\n");
 
   const qa = await generateQA(chat, input, null, batchSize, concurrency, lang);
@@ -1127,7 +1128,9 @@ Output strictly in the following format, do not include other text:
     `;
 
       const raw = await chat(unitPrompt);
-      const summaryMatch = raw.match(/===SUMMARY===\s*([\s\S]*?)===CHAPTERS===/);
+      const summaryMatch = raw.match(
+        /===SUMMARY===\s*([\s\S]*?)===CHAPTERS===/,
+      );
       const chaptersMatch = raw.match(/===CHAPTERS===\s*([\s\S]*)/);
       const unitSummary = summaryMatch ? summaryMatch[1].trim() : "";
       let chaptersText = (chaptersMatch ? chaptersMatch[1] : raw).trim();
